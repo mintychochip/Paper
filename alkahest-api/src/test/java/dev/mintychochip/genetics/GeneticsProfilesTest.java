@@ -18,8 +18,8 @@ class GeneticsProfilesTest {
 
     @Test
     void unknownAnimalTypesUseTheGenericProfile() {
-        assertEquals(GeneticsProfiles.generic(), GeneticsProfiles.forEntityType(EntityType.COW));
-        assertEquals(GeneticsProfiles.generic(), GeneticsProfiles.forEntityType(EntityType.PIG));
+        assertEquals(GeneticsProfiles.generic(), GeneticsProfiles.forEntityType(EntityType.POLAR_BEAR));
+        assertEquals(GeneticsProfiles.generic(), GeneticsProfiles.forEntityType(EntityType.DOLPHIN));
     }
 
     @Test
