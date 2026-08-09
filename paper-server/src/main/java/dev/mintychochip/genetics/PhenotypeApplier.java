@@ -9,12 +9,14 @@ import java.util.Optional;
 import net.minecraft.world.entity.animal.Animal;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
+import org.bukkit.DyeColor;
 import org.bukkit.craftbukkit.entity.CraftEntityType;
 import org.bukkit.entity.Cat;
 import org.bukkit.entity.Cow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Wolf;
+import org.bukkit.entity.Sheep;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -34,7 +36,7 @@ public final class PhenotypeApplier {
      * @return true if at least one visual property was changed
      */
     public static boolean apply(final Animal animal, final Genome genome) {
-        final PhenotypeSnapshot phenotype = AnimalGenetics.phenotypeOf(genome);
+        final PhenotypeSnapshot phenotype = AnimalGenetics.phenotypeOf(animal, genome);
         return apply(animal, phenotype);
     }
 
@@ -44,11 +46,30 @@ public final class PhenotypeApplier {
     public static boolean apply(final Animal animal, final PhenotypeSnapshot phenotype) {
         final Entity bukkit = animal.getBukkitEntity();
         final EntityType type = CraftEntityType.minecraftToBukkit(animal.getType());
+        if (type == EntityType.SHEEP) {
+            return applySheep(bukkit, phenotype);
+        }
         final Optional<NamespacedKey> variantKey = PhenotypeVariantResolver.resolve(type, phenotype);
         if (variantKey.isEmpty()) {
             return false;
         }
         return applyVariantKey(bukkit, type, variantKey.get());
+    }
+
+    private static boolean applySheep(final Entity bukkit, final PhenotypeSnapshot phenotype) {
+        if (!(bukkit instanceof Sheep sheep)) {
+            return false;
+        }
+        final String color = phenotype.getOrNull("sheep.color");
+        if (color == null) {
+            return false;
+        }
+        try {
+            sheep.setColor(DyeColor.valueOf(color));
+            return true;
+        } catch (final IllegalArgumentException ignored) {
+            return false;
+        }
     }
 
     /**

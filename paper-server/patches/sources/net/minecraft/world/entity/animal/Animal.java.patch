@@ -1,5 +1,13 @@
 --- a/net/minecraft/world/entity/animal/Animal.java
 +++ b/net/minecraft/world/entity/animal/Animal.java
+@@ -14,6 +_,7 @@
+ import net.minecraft.world.InteractionResult;
+ import net.minecraft.world.damagesource.DamageSource;
+ import net.minecraft.world.entity.AgeableMob;
++import net.minecraft.world.entity.Entity;
+ import net.minecraft.world.entity.EntityEvent;
+ import net.minecraft.world.entity.EntityReference;
+ import net.minecraft.world.entity.EntitySpawnReason;
 @@ -45,6 +_,7 @@
      private static final int DEFAULT_IN_LOVE_TIME = 0;
      private int inLove = 0;
@@ -34,13 +42,21 @@
      }
  
      @Override
-@@ -106,6 +_,9 @@
+@@ -106,6 +_,17 @@
          super.readAdditionalSaveData(input);
          this.inLove = input.getIntOr("InLove", 0);
          this.loveCause = EntityReference.read(input, "LoveCause");
 +        // mintychochip start - genetics persistence
 +        dev.mintychochip.genetics.AnimalGenetics.load(this, input);
 +        // mintychochip end - genetics persistence
++    }
++
++    @Override
++    public void onRemoval(final Entity.RemovalReason reason) {
++        super.onRemoval(reason);
++        if (reason == Entity.RemovalReason.KILLED || reason == Entity.RemovalReason.DISCARDED) {
++            dev.mintychochip.genetics.AnimalGenetics.remove(this);
++        }
      }
  
      public static boolean checkAnimalSpawnRules(
@@ -94,7 +110,7 @@
      }
  
      public void spawnChildFromBreeding(final ServerLevel level, final Animal partner) {
-@@ -208,23 +_,61 @@
+@@ -208,23 +_,58 @@
          if (offspring != null) {
              offspring.setBaby(true);
              offspring.snapTo(this.getX(), this.getY(), this.getZ(), 0.0F, 0.0F);
@@ -123,9 +139,6 @@
 +                return;
 +            }
 +            experience = entityBreedEvent.getExperience();
-+            // mintychochip start - phenotype → registry variant on child
-+            dev.mintychochip.genetics.AnimalGenetics.applyChildAppearance(offspring);
-+            // mintychochip end - phenotype → registry variant on child
 +
 +            this.finalizeSpawnChildFromBreeding(level, partner, offspring, experience);
 +            level.addFreshEntityWithPassengers(offspring, org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.BREEDING);

@@ -18,6 +18,7 @@ import dev.mintychochip.genetics.model.Sex;
 import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
+import org.bukkit.entity.EntityType;
 import org.bukkit.support.environment.Normal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -107,6 +108,12 @@ public class AnimalGeneticsTest {
     @Test
     public void nbtKeyConstantStableForPersistence() {
         assertEquals("MintyGenome", AnimalGenetics.NBT_KEY);
+    }
+
+    @Test
+    public void sheepProfileIsSelectedByEntityType() {
+        assertEquals("sheep", AnimalGenetics.profileFor(EntityType.SHEEP).id());
+        assertEquals("generic", AnimalGenetics.profileFor(EntityType.COW).id());
     }
 
     @Test
