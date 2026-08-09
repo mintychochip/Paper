@@ -14,6 +14,6 @@ public final class GeneticsProfiles {
 
     public static GeneticsProfile forEntityType(final EntityType entityType) {
         Objects.requireNonNull(entityType, "entityType");
-        return GenericGeneticsProfile.INSTANCE;
+        return entityType == EntityType.SHEEP ? SheepGeneticsProfile.INSTANCE : GenericGeneticsProfile.INSTANCE;
     }
 }
