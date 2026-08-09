@@ -2,6 +2,7 @@ package dev.mintychochip.genetics.profile;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.bukkit.entity.EntityType;
@@ -20,17 +21,26 @@ public final class GeneticsProfiles {
     private static Map<EntityType, GeneticsProfile> buildRegistry() {
         final Map<EntityType, GeneticsProfile> map = new LinkedHashMap<>();
         map.put(EntityType.SHEEP, SheepGeneticsProfile.INSTANCE);
-        // Task 2 replaces these placeholders with variant profiles and adapters.
-        map.put(EntityType.AXOLOTL, EmptyGeneticsProfile.of("axolotl"));
-        map.put(EntityType.CAT, EmptyGeneticsProfile.of("cat"));
-        map.put(EntityType.CHICKEN, EmptyGeneticsProfile.of("chicken"));
-        map.put(EntityType.COW, EmptyGeneticsProfile.of("cow"));
-        map.put(EntityType.MOOSHROOM, EmptyGeneticsProfile.of("mooshroom"));
-        map.put(EntityType.FOX, EmptyGeneticsProfile.of("fox"));
-        map.put(EntityType.FROG, EmptyGeneticsProfile.of("frog"));
-        map.put(EntityType.PIG, EmptyGeneticsProfile.of("pig"));
-        map.put(EntityType.RABBIT, EmptyGeneticsProfile.of("rabbit"));
-        map.put(EntityType.WOLF, EmptyGeneticsProfile.of("wolf"));
+        map.put(EntityType.AXOLOTL, VariantGeneticsProfile.of("axolotl", "axolotl.variant",
+            List.of("LUCY", "WILD", "GOLD", "CYAN", "BLUE")));
+        map.put(EntityType.CAT, VariantGeneticsProfile.of("cat", "cat.variant",
+            List.of("TABBY", "BLACK", "RED", "SIAMESE", "CALICO", "BRITISH_SHORTHAIR", "PERSIAN", "RAGDOLL", "WHITE")));
+        map.put(EntityType.CHICKEN, VariantGeneticsProfile.of("chicken", "chicken.variant",
+            List.of("WHITE", "BROWN")));
+        map.put(EntityType.COW, VariantGeneticsProfile.of("cow", "cow.variant",
+            List.of("NORMAL")));
+        map.put(EntityType.MOOSHROOM, VariantGeneticsProfile.of("mooshroom", "mooshroom.variant",
+            List.of("RED", "BROWN")));
+        map.put(EntityType.FOX, VariantGeneticsProfile.of("fox", "fox.variant",
+            List.of("RED", "SNOW")));
+        map.put(EntityType.FROG, VariantGeneticsProfile.of("frog", "frog.variant",
+            List.of("TEMPERATE", "WARM", "COLD")));
+        map.put(EntityType.PIG, VariantGeneticsProfile.of("pig", "pig.variant",
+            List.of("MEATY", "NORMAL")));
+        map.put(EntityType.RABBIT, VariantGeneticsProfile.of("rabbit", "rabbit.variant",
+            List.of("BROWN", "WHITE", "BLACK", "GOLD", "SALT_AND_PEPPER", "KILLER")));
+        map.put(EntityType.WOLF, VariantGeneticsProfile.of("wolf", "wolf.variant",
+            List.of("PALE", "WOODS", "ASHEN", "BLACK", "CHESTNUT", "RUSTY", "SNOWY")));
 
         map.put(EntityType.ARMADILLO, EmptyGeneticsProfile.of("armadillo"));
         map.put(EntityType.BEE, EmptyGeneticsProfile.of("bee"));
