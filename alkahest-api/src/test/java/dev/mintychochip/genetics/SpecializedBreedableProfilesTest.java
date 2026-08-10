@@ -45,6 +45,34 @@ class SpecializedBreedableProfilesTest {
         );
     }
 
+    @Test
+    void pandaHeterozygousAndSwappedCopiesResolveFromBothAlleles() {
+        assertEquals(
+            "LAZY",
+            PandaGeneticsProfile.INSTANCE.phenotype(pandaGenome("BROWN", "LAZY", "BROWN", "BROWN"))
+                .getOrNull(PandaGeneticsProfile.MAIN.phenotypeKey()),
+            "a heterozygous main copy resolves the first declared label among present alleles"
+        );
+        assertEquals(
+            "LAZY",
+            PandaGeneticsProfile.INSTANCE.phenotype(pandaGenome("LAZY", "BROWN", "BROWN", "BROWN"))
+                .getOrNull(PandaGeneticsProfile.MAIN.phenotypeKey()),
+            "swapping the main copy order must not change the resolved main gene"
+        );
+        assertEquals(
+            "BROWN",
+            PandaGeneticsProfile.INSTANCE.phenotype(pandaGenome("WEAK", "BROWN", "BROWN", "BROWN"))
+                .getOrNull(PandaGeneticsProfile.MAIN.phenotypeKey()),
+            "two recessive main labels resolve the earlier declared label"
+        );
+        assertEquals(
+            "NORMAL",
+            PandaGeneticsProfile.INSTANCE.phenotype(pandaGenome("BROWN", "BROWN", "LAZY", "BROWN"))
+                .getOrNull(PandaGeneticsProfile.MAIN.phenotypeKey()),
+            "a swapped heterozygous hidden copy still distinguishes the recessive main gene"
+        );
+    }
+
     // ---- quantitative equine trait formula (exact vanilla arithmetic) ----
 
     @Test
@@ -149,14 +177,23 @@ class SpecializedBreedableProfilesTest {
     // ---- helpers ----
 
     private static dev.mintychochip.genetics.model.Genome pandaGenome(final String main, final String hidden) {
+        return pandaGenome(main, main, hidden, hidden);
+    }
+
+    private static dev.mintychochip.genetics.model.Genome pandaGenome(
+        final String mainA,
+        final String mainB,
+        final String hiddenA,
+        final String hiddenB
+    ) {
         return dev.mintychochip.genetics.model.Genome.builder(dev.mintychochip.genetics.model.Sex.FEMALE)
             .put(PandaGeneticsProfile.MAIN, dev.mintychochip.genetics.model.GeneCopy.diploid(
-                dev.mintychochip.genetics.model.Allele.of("ATGAAACCC", main),
-                dev.mintychochip.genetics.model.Allele.of("ATGAAACCC", main)
+                dev.mintychochip.genetics.model.Allele.of("ATGAAACCC", mainA),
+                dev.mintychochip.genetics.model.Allele.of("ATGAAACCC", mainB)
             ))
             .put(PandaGeneticsProfile.HIDDEN, dev.mintychochip.genetics.model.GeneCopy.diploid(
-                dev.mintychochip.genetics.model.Allele.of("ATGAAACCC", hidden),
-                dev.mintychochip.genetics.model.Allele.of("ATGAAACCC", hidden)
+                dev.mintychochip.genetics.model.Allele.of("ATGAAACCC", hiddenA),
+                dev.mintychochip.genetics.model.Allele.of("ATGAAACCC", hiddenB)
             ))
             .build();
     }

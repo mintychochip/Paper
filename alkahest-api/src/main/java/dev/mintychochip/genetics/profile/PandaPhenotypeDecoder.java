@@ -15,14 +15,28 @@ public final class PandaPhenotypeDecoder {
             new IllegalArgumentException("Missing panda.main locus"));
         final GeneCopy hiddenCopy = genome.get(PandaGeneticsProfile.HIDDEN.id()).orElseThrow(() ->
             new IllegalArgumentException("Missing panda.hidden locus"));
-        final String main = label(mainCopy.alleleA());
-        final String hidden = label(hiddenCopy.alleleA());
+        final String main = resolveGene(mainCopy);
+        final String hidden = resolveGene(hiddenCopy);
         final String visible = resolveVisible(main, hidden);
         return new PhenotypeSnapshot(List.of(
             new PhenotypeTrait(PandaGeneticsProfile.MAIN.phenotypeKey(), visible),
             new PhenotypeTrait(PandaGeneticsProfile.HIDDEN.phenotypeKey(), hidden),
             new PhenotypeTrait(PandaGeneticsProfile.VARIANT_KEY, visible)
         ));
+    }
+
+    private static String resolveGene(final GeneCopy copy) {
+        final String a = label(copy.alleleA());
+        if (copy.isHemizygous()) {
+            return a;
+        }
+        final String b = label(copy.alleleB());
+        for (final String candidate : PandaGeneticsProfile.LABELS) {
+            if (candidate.equals(a) || candidate.equals(b)) {
+                return candidate;
+            }
+        }
+        throw new IllegalArgumentException("Unknown panda alleles: " + a + "/" + b);
     }
 
     public static String resolveVisible(final String main, final String hidden) {
