@@ -1188,13 +1188,20 @@
                      String message = "onTrackingStart called during navigation iteration";
                      Util.logAndPauseIfInIde(
                          "onTrackingStart called during navigation iteration", new IllegalStateException("onTrackingStart called during navigation iteration")
-@@ -1961,10 +_,52 @@
+@@ -1961,10 +_,59 @@
              }
  
              entity.updateDynamicGameEventListener(DynamicGameEventListener::add);
 +            entity.inWorld = true; // CraftBukkit - Mark entity as in world
 +            entity.valid = true; // CraftBukkit
 +            ServerLevel.this.getChunkSource().addEntity(entity); // Paper - ignore and warn about illegal addEntity calls instead of crashing server
++            // mintychochip start - initialize genetics after entity lookup acceptance
++            if (entity instanceof net.minecraft.world.entity.animal.Animal animal) {
++                dev.mintychochip.genetics.AnimalGenetics.onAddedToWorld(animal);
++            } else if (entity instanceof net.minecraft.world.entity.npc.villager.Villager villager) {
++                dev.mintychochip.genetics.AnimalGenetics.onAddedToWorld(villager);
++            }
++            // mintychochip end - initialize genetics after entity lookup acceptance
 +            // Paper start - Entity origin API
 +            if (entity.origin == null) {
 +                entity.origin = entity.position();

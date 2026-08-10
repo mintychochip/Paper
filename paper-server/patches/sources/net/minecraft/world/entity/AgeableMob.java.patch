@@ -12,3 +12,37 @@
              setAgeLocked(this, this::isAgeLocked, player, itemInHand, mob -> this.setAgeLockedData());
              return InteractionResult.SUCCESS;
          } else {
+@@ -162,6 +_,9 @@
+     @Override
+     protected void addAdditionalSaveData(final ValueOutput output) {
+         super.addAdditionalSaveData(output);
++        // mintychochip start - common genetics persistence
++        dev.mintychochip.genetics.AnimalGenetics.save(this, output);
++        // mintychochip end - common genetics persistence
+         if (this.canBeABaby()) {
+             output.putInt("Age", this.getAge());
+             output.putInt("ForcedAge", this.forcedAge);
+@@ -176,10 +_,23 @@
+     @Override
+     protected void readAdditionalSaveData(final ValueInput input) {
+         super.readAdditionalSaveData(input);
++        // mintychochip start - common genetics persistence
++        dev.mintychochip.genetics.AnimalGenetics.load(this, input);
++        // mintychochip end - common genetics persistence
+         if (this.canBeABaby()) {
+             this.setAge(input.getIntOr("Age", 0));
+             this.forcedAge = input.getIntOr("ForcedAge", 0);
+             this.setAgeLocked(input.getBooleanOr("AgeLocked", false));
++        }
++    }
++
++    @Override
++    public void onRemoval(final Entity.RemovalReason reason) {
++        super.onRemoval(reason);
++        if (reason == Entity.RemovalReason.KILLED || reason == Entity.RemovalReason.DISCARDED) {
++            // mintychochip start - common genetics removal
++            dev.mintychochip.genetics.AnimalGenetics.remove(this);
++            // mintychochip end - common genetics removal
+         }
+     }
+ 

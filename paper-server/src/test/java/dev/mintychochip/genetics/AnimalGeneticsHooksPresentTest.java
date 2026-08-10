@@ -1,5 +1,6 @@
 package dev.mintychochip.genetics;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -22,21 +23,95 @@ public class AnimalGeneticsHooksPresentTest {
         assertTrue(src.contains("dev.mintychochip.genetics.AnimalGenetics.allowsMate"), "canMate must call AnimalGenetics.allowsMate");
         assertTrue(src.contains("dev.mintychochip.genetics.AnimalGenetics.prepareBreed"), "spawnChildFromBreeding must call AnimalGenetics.prepareBreed");
         assertTrue(src.contains("dev.mintychochip.genetics.AnimalGenetics.discardBreed"), "cancel path must discard child genome");
-        assertTrue(src.contains("dev.mintychochip.genetics.AnimalGenetics.applyChildAppearance"), "successful breed must apply phenotype to registry variants");
         assertTrue(src.contains("breedGenetics"), "EntityBreedEvent must receive genetics metadata");
-        assertTrue(src.contains("dev.mintychochip.genetics.AnimalGenetics.save"), "save path must persist genome");
-        assertTrue(src.contains("dev.mintychochip.genetics.AnimalGenetics.load"), "load path must restore genome");
+        assertFalse(src.contains("dev.mintychochip.genetics.AnimalGenetics.save"), "save hook must move to AgeableMob");
+        assertFalse(src.contains("dev.mintychochip.genetics.AnimalGenetics.load"), "load hook must move to AgeableMob");
+        assertFalse(src.contains("dev.mintychochip.genetics.AnimalGenetics.remove"), "removal hook must move to AgeableMob");
     }
 
     @Test
     public void animalPatchDocumentsGeneticsHooks() throws Exception {
-        final String text = readProjectFile(
+        final String animalPatch = readProjectFile(
             "patches/sources/net/minecraft/world/entity/animal/Animal.java.patch",
             "paper-server/patches/sources/net/minecraft/world/entity/animal/Animal.java.patch"
         );
-        assertTrue(text.contains("AnimalGenetics.allowsMate"), "patch must include mate gate");
-        assertTrue(text.contains("AnimalGenetics.prepareBreed") || text.contains("AnimalGenetics.onBreed"), "patch must include breed hook");
-        assertTrue(text.contains("AnimalGenetics.save"), "patch must include save hook");
+        final String ageablePatch = readProjectFile(
+            "patches/sources/net/minecraft/world/entity/AgeableMob.java.patch",
+            "paper-server/patches/sources/net/minecraft/world/entity/AgeableMob.java.patch"
+        );
+        assertTrue(animalPatch.contains("AnimalGenetics.allowsMate"), "patch must include mate gate");
+        assertTrue(animalPatch.contains("AnimalGenetics.prepareBreed") || animalPatch.contains("AnimalGenetics.onBreed"), "patch must include breed hook");
+        assertTrue(ageablePatch.contains("AnimalGenetics.save"), "common patch must include save hook");
+        assertTrue(ageablePatch.contains("AnimalGenetics.load"), "common patch must include load hook");
+        assertTrue(ageablePatch.contains("AnimalGenetics.remove"), "common patch must include removal hook");
+    }
+
+    @Test
+    public void serverFacadePersistsProfileIdBesideGenomeJson() throws Exception {
+        final String source = readProjectFile(
+            "src/main/java/dev/mintychochip/genetics/AnimalGenetics.java",
+            "paper-server/src/main/java/dev/mintychochip/genetics/AnimalGenetics.java"
+        );
+        assertTrue(source.contains("output.putString(PROFILE_NBT_KEY"), "save path must persist profile id");
+        assertTrue(source.contains("input.getString(PROFILE_NBT_KEY"), "load path must read profile id");
+    }
+
+    @Test
+    public void commonInsertionAndRemovalHooksArePresent() throws Exception {
+        final String serverLevel = readProjectFile(
+            "src/minecraft/java/net/minecraft/server/level/ServerLevel.java",
+            "paper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java"
+        );
+        final String ageable = readProjectFile(
+            "src/minecraft/java/net/minecraft/world/entity/AgeableMob.java",
+            "paper-server/src/minecraft/java/net/minecraft/world/entity/AgeableMob.java"
+        );
+        assertTrue(serverLevel.contains("AnimalGenetics.onAddedToWorld"), "accepted animals must attach genetics");
+        assertTrue(ageable.contains("AnimalGenetics.remove"), "removed ageables must release genetics cache");
+        assertTrue(ageable.contains("onRemoval"), "cache cleanup must be tied to the common removal lifecycle");
+    }
+
+    @Test
+    public void specialBreedResolutionAndAdaptersArePresent() throws Exception {
+        final String genetics = readProjectFile(
+            "src/main/java/dev/mintychochip/genetics/AnimalGenetics.java",
+            "paper-server/src/main/java/dev/mintychochip/genetics/AnimalGenetics.java"
+        );
+        final String applier = readProjectFile(
+            "src/main/java/dev/mintychochip/genetics/PhenotypeApplier.java",
+            "paper-server/src/main/java/dev/mintychochip/genetics/PhenotypeApplier.java"
+        );
+        assertTrue(genetics.contains("familyProfile().breed("), "Animal breeding must delegate to the resolved family profile");
+        assertTrue(genetics.contains("childProfile().id()"), "child cache must use the resolved child profile");
+        assertTrue(applier.contains("\"equine.speed\""), "equine numeric adapter must be present");
+        assertTrue(applier.contains("\"llama.strength\""), "llama strength adapter must be present");
+        assertTrue(applier.contains("\"panda.hidden\""), "panda hidden-gene adapter must be present");
+    }
+    @Test
+    public void specialBreedOverridesRetainGeneticsMateGate() throws Exception {
+        for (final String source : new String[] {
+            "src/minecraft/java/net/minecraft/world/entity/animal/equine/Horse.java",
+            "src/minecraft/java/net/minecraft/world/entity/animal/equine/Llama.java",
+            "src/minecraft/java/net/minecraft/world/entity/animal/equine/Donkey.java",
+            "src/minecraft/java/net/minecraft/world/entity/animal/camel/Camel.java",
+            "src/minecraft/java/net/minecraft/world/entity/animal/wolf/Wolf.java"
+        }) {
+            final String content = readProjectFile(source,
+                "paper-server/" + source);
+            assertTrue(content.contains("AnimalGenetics.allowsMate"),
+                source + " must retain the genetics mate gate");
+        }
+    }
+
+    @Test
+    public void foxBreedOverrideRetainsGeneticsLifecycle() throws Exception {
+        final String source = readProjectFile(
+            "src/minecraft/java/net/minecraft/world/entity/animal/fox/Fox.java",
+            "paper-server/src/minecraft/java/net/minecraft/world/entity/animal/fox/Fox.java"
+        );
+        assertTrue(source.contains("AnimalGenetics.prepareBreed"), "fox breed must prepare genetics");
+        assertTrue(source.contains("AnimalGenetics.discardBreed"), "fox cancellation must discard genetics");
+        assertTrue(source.contains("breedGenetics"), "fox EntityBreedEvent must receive genetics metadata");
     }
 
     private static String readProjectFile(final String... relativeCandidates) throws Exception {

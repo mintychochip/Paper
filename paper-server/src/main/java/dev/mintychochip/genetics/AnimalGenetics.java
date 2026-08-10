@@ -1,10 +1,8 @@
 package dev.mintychochip.genetics;
 
-import dev.mintychochip.genetics.catalog.DefaultGeneticsCatalog;
 import dev.mintychochip.genetics.dna.MutationSettings;
 import dev.mintychochip.genetics.dto.BreedGenetics;
 import dev.mintychochip.genetics.dto.GenotypeSnapshot;
-import dev.mintychochip.genetics.dto.PhenotypeDecoder;
 import dev.mintychochip.genetics.dto.PhenotypeSnapshot;
 import dev.mintychochip.genetics.dto.PhenotypeVariantResolver;
 import dev.mintychochip.genetics.engine.BreedingEngine;
@@ -13,9 +11,12 @@ import dev.mintychochip.genetics.engine.GeneticMatePolicy;
 import dev.mintychochip.genetics.engine.RecombinationSettings;
 import dev.mintychochip.genetics.io.GenomeCodec;
 import dev.mintychochip.genetics.model.Genome;
-import dev.mintychochip.genetics.model.GenomeGenerator;
 import dev.mintychochip.genetics.model.LocusCatalog;
 import dev.mintychochip.genetics.model.Sex;
+import dev.mintychochip.genetics.profile.BreedContext;
+import dev.mintychochip.genetics.profile.BreedPlan;
+import dev.mintychochip.genetics.profile.GeneticsProfile;
+import dev.mintychochip.genetics.profile.GeneticsProfiles;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,6 +26,8 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.npc.villager.VillagerType;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import org.bukkit.NamespacedKey;
@@ -41,11 +44,15 @@ import org.jspecify.annotations.Nullable;
 public final class AnimalGenetics {
 
     public static final String NBT_KEY = "MintyGenome";
+    public static final String PROFILE_NBT_KEY = "MintyGenomeProfile";
 
-    private static final Map<UUID, Genome> CACHE = new ConcurrentHashMap<>();
-    private static final LocusCatalog CATALOG = DefaultGeneticsCatalog.get();
-    private static final PhenotypeDecoder PHENOTYPE = new PhenotypeDecoder(CATALOG);
+    private static final Map<UUID, CacheEntry> CACHE = new ConcurrentHashMap<>();
+    private static final GeneticsProfile GENERIC_PROFILE = GeneticsProfiles.generic();
+    private static final LocusCatalog CATALOG = GENERIC_PROFILE.catalog();
     private static volatile boolean enabled = true;
+
+    private record CacheEntry(String profileId, Genome genome) {
+    }
 
     private AnimalGenetics() {
     }
@@ -78,28 +85,83 @@ public final class AnimalGenetics {
         CACHE.clear();
     }
 
+    public static GeneticsProfile profileFor(final EntityType entityType) {
+        return GeneticsProfiles.forEntityType(entityType);
+    }
+
+    public static GeneticsProfile profile(final Animal animal) {
+        return profileFor(CraftEntityType.minecraftToBukkit(animal.getType()));
+    }
+    public static GeneticsProfile profile(final AgeableMob ageable) {
+        return profileFor(CraftEntityType.minecraftToBukkit(ageable.getType()));
+    }
+
     // ------------------------------------------------------------------
     // Persistence (entity NBT + in-memory cache)
     // ------------------------------------------------------------------
 
     public static void save(final Animal animal, final ValueOutput output) {
-        final Genome genome = CACHE.get(animal.getUUID());
-        if (genome != null) {
-            output.putString(NBT_KEY, GenomeCodec.encode(genome));
+        final CacheEntry entry = CACHE.get(animal.getUUID());
+        if (entry != null) {
+            output.putString(NBT_KEY, GenomeCodec.encode(entry.genome()));
+            output.putString(PROFILE_NBT_KEY, entry.profileId());
         }
     }
 
+    public static void save(final AgeableMob ageable, final ValueOutput output) {
+        final CacheEntry entry = CACHE.get(ageable.getUUID());
+        if (entry != null) {
+            output.putString(NBT_KEY, GenomeCodec.encode(entry.genome()));
+            output.putString(PROFILE_NBT_KEY, entry.profileId());
+        }
+    }
     public static void load(final Animal animal, final ValueInput input) {
         input.getString(NBT_KEY).ifPresent(encoded -> {
             try {
                 final Genome genome = GenomeCodec.decode(encoded);
-                CACHE.put(animal.getUUID(), genome);
-                // Re-apply looks so NBT genome wins over any vanilla default variant.
-                PhenotypeApplier.apply(animal, genome);
+                final String profileId = input.getString(PROFILE_NBT_KEY).orElse(GENERIC_PROFILE.id());
+                CACHE.put(animal.getUUID(), new CacheEntry(profileId, genome));
             } catch (final RuntimeException ignored) {
-                // Corrupt data: regenerate on next access.
+                // Corrupt data: regenerate on next world insertion.
             }
         });
+    }
+    public static void load(final AgeableMob ageable, final ValueInput input) {
+        input.getString(NBT_KEY).ifPresent(encoded -> {
+            try {
+                final Genome genome = GenomeCodec.decode(encoded);
+                final String profileId = input.getString(PROFILE_NBT_KEY).orElse(GENERIC_PROFILE.id());
+                CACHE.put(ageable.getUUID(), new CacheEntry(profileId, genome));
+            } catch (final RuntimeException ignored) {
+                // Corrupt data: regenerate on next world insertion.
+            }
+        });
+    }
+
+    /**
+     * Attach or restore an animal after the entity lookup has accepted it.
+     * This runs after subclass NBT has finished, so the genetic phenotype wins
+     * over vanilla defaults and restored variants.
+     */
+    public static void onAddedToWorld(final Animal animal) {
+        final GeneticsProfile profile = profile(animal);
+        final CacheEntry entry = ensureEntry(animal, profile, asGenerator(animal.getRandom()), false);
+        PhenotypeApplier.apply(animal, profile.phenotype(entry.genome()));
+    }
+    public static void onAddedToWorld(final AgeableMob ageable) {
+        final GeneticsProfile resolved = profile(ageable);
+        final CacheEntry entry = ensureEntry(ageable, resolved, asGenerator(ageable.getRandom()), false);
+        PhenotypeApplier.apply(ageable, resolved.phenotype(entry.genome()));
+    }
+
+    public static void setGenome(final AgeableMob ageable, final Genome genome) {
+        final GeneticsProfile resolved = profile(ageable);
+        CACHE.put(ageable.getUUID(), new CacheEntry(resolved.id(), genome));
+        PhenotypeApplier.apply(ageable, resolved.phenotype(genome));
+    }
+
+    public static @Nullable Genome getGenome(final AgeableMob ageable) {
+        return getGenome(ageable.getUUID());
     }
 
     public static void remove(final Entity entity) {
@@ -110,20 +172,22 @@ public final class AnimalGenetics {
      * Direct attach for tests and tools (no entity required beyond UUID keying).
      */
     public static void setGenome(final UUID entityId, final Genome genome) {
-        CACHE.put(entityId, genome);
+        CACHE.put(entityId, new CacheEntry(GENERIC_PROFILE.id(), genome));
     }
 
     public static @Nullable Genome getGenome(final UUID entityId) {
-        return CACHE.get(entityId);
+        final CacheEntry entry = CACHE.get(entityId);
+        return entry == null ? null : entry.genome();
     }
 
     public static void setGenome(final Animal animal, final Genome genome) {
-        CACHE.put(animal.getUUID(), genome);
-        PhenotypeApplier.apply(animal, genome);
+        final GeneticsProfile profile = profile(animal);
+        CACHE.put(animal.getUUID(), new CacheEntry(profile.id(), genome));
+        PhenotypeApplier.apply(animal, profile.phenotype(genome));
     }
 
     public static @Nullable Genome getGenome(final Animal animal) {
-        return CACHE.get(animal.getUUID());
+        return getGenome(animal.getUUID());
     }
 
     /**
@@ -134,33 +198,71 @@ public final class AnimalGenetics {
     }
 
     public static PhenotypeSnapshot phenotypeOf(final Genome genome) {
-        return PHENOTYPE.decode(genome);
+        return GENERIC_PROFILE.phenotype(genome);
+    }
+
+    public static PhenotypeSnapshot phenotypeOf(final Animal animal, final Genome genome) {
+        return profile(animal).phenotype(genome);
+    }
+
+    public static PhenotypeSnapshot phenotypeOf(final AgeableMob ageable, final Genome genome) {
+        return profile(ageable).phenotype(genome);
+    }
+
+    public static PhenotypeSnapshot phenotypeOf(final AgeableMob ageable) {
+        final GeneticsProfile resolved = profile(ageable);
+        final CacheEntry entry = ensureEntry(ageable, resolved, asGenerator(ageable.getRandom()), false);
+        return resolved.phenotype(entry.genome());
+    }
+    public static PhenotypeSnapshot phenotypeOf(final Animal animal) {
+        final GeneticsProfile profile = profile(animal);
+        final CacheEntry entry = ensureEntry(animal, profile, asGenerator(animal.getRandom()), false);
+        return profile.phenotype(entry.genome());
     }
 
     public static Genome getOrCreate(final Animal animal, final RandomSource random) {
-        final Genome existing = CACHE.get(animal.getUUID());
-        if (existing != null) {
-            return existing;
-        }
-        final Sex sex = random.nextBoolean() ? Sex.MALE : Sex.FEMALE;
-        final Genome created = new GenomeGenerator(CATALOG, asGenerator(random)).generate(sex);
-        CACHE.put(animal.getUUID(), created);
-        // First attach: push coat (etc.) onto registry variants so looks match genome.
-        PhenotypeApplier.apply(animal, created);
-        return created;
+        final GeneticsProfile profile = profile(animal);
+        return ensureEntry(animal, profile, asGenerator(random), true).genome();
     }
 
-    /**
-     * After a successful (non-cancelled) breed, paint the child from its genome.
-     */
-    public static void applyChildAppearance(final @Nullable AgeableMob offspring) {
-        if (offspring == null || !(offspring instanceof Animal animal)) {
-            return;
+    public static Genome getOrCreate(final AgeableMob ageable, final RandomSource random) {
+        final GeneticsProfile resolved = profile(ageable);
+        return ensureEntry(ageable, resolved, asGenerator(random), true).genome();
+    }
+    private static CacheEntry ensureEntry(
+        final AgeableMob ageable,
+        final GeneticsProfile profile,
+        final RandomGenerator random,
+        final boolean apply
+    ) {
+        final UUID entityId = ageable.getUUID();
+        final CacheEntry existing = CACHE.get(entityId);
+        if (existing != null && existing.profileId().equals(profile.id())) {
+            try {
+                final PhenotypeSnapshot phenotype = profile.phenotype(existing.genome());
+                if (apply) {
+                    PhenotypeApplier.apply(ageable, phenotype);
+                }
+                return existing;
+            } catch (final RuntimeException ignored) {
+                CACHE.remove(entityId, existing);
+            }
         }
-        final Genome genome = CACHE.get(animal.getUUID());
-        if (genome != null) {
-            PhenotypeApplier.apply(animal, genome);
+
+        final Sex sex = random.nextBoolean() ? Sex.MALE : Sex.FEMALE;
+        Genome genome;
+        try {
+            genome = FounderCaptures.capture(ageable, profile, sex, random);
+            profile.phenotype(genome);
+        } catch (final RuntimeException ignored) {
+            genome = profile.founder(sex, random);
         }
+        final CacheEntry created = new CacheEntry(profile.id(), genome);
+        CACHE.put(entityId, created);
+        if (apply) {
+            PhenotypeApplier.apply(ageable, profile.phenotype(created.genome()));
+        }
+        return created;
     }
 
     // ------------------------------------------------------------------
@@ -209,22 +311,85 @@ public final class AnimalGenetics {
         if (!enabled || offspring == null) {
             return null;
         }
-        final Genome ga = getOrCreate(parentA, parentA.getRandom());
-        final Genome gb = getOrCreate(parentB, parentB.getRandom());
-        final Optional<BreedingResult> result = cross(ga, gb, parentA.getRandom());
-        if (result.isEmpty()) {
+        final EntityType parentType = CraftEntityType.minecraftToBukkit(parentA.getType());
+        final EntityType partnerType = CraftEntityType.minecraftToBukkit(parentB.getType());
+        final EntityType childType = CraftEntityType.minecraftToBukkit(offspring.getType());
+        final Optional<BreedPlan> plan = GeneticsProfiles.resolveBreed(parentType, partnerType, childType);
+        if (plan.isEmpty()) {
             return null;
         }
-        final Genome child = result.get().child();
-        CACHE.put(offspring.getUUID(), child);
+        final BreedPlan breedPlan = plan.orElseThrow();
+        final Genome ga = getOrCreate(parentA, parentA.getRandom());
+        final Genome gb = getOrCreate(parentB, parentB.getRandom());
+        final Optional<Genome> childResult = breedPlan.familyProfile().breed(
+            ga,
+            gb,
+            asGenerator(parentA.getRandom()),
+            BreedContext.of(parentType, partnerType, childType)
+        );
+        if (childResult.isEmpty()) {
+            return null;
+        }
+        final Genome child = childResult.orElseThrow();
+        CACHE.put(offspring.getUUID(), new CacheEntry(breedPlan.childProfile().id(), child));
 
         final Animal mother = ga.sex() == Sex.FEMALE ? parentA : parentB;
         final Animal father = ga.sex() == Sex.MALE ? parentA : parentB;
         final Genome motherGenome = mother == parentA ? ga : gb;
         final Genome fatherGenome = father == parentA ? ga : gb;
 
-        final EntityType childType = CraftEntityType.minecraftToBukkit(offspring.getType());
-        return new BreedPrep(mother, father, child, snapshotsOf(motherGenome, fatherGenome, child, childType));
+        return new BreedPrep(
+            mother,
+            father,
+            child,
+            snapshotsOf(motherGenome, fatherGenome, child, childType, breedPlan.childProfile())
+        );
+    }
+    /**
+     * Prepare a villager child genome before vanilla inserts the child.
+     *
+     * <p>Vanilla already chooses the child's type from the biome and parents.
+     * Feed that same biome-derived type into the profile-aware cross, then
+     * cache the result. Any profile or breed-resolution failure is ignored so
+     * vanilla child creation continues unchanged.
+     *
+     * @return whether a child genome was cached
+     */
+    public static boolean prepareVillagerBreed(
+        final Villager source,
+        final Villager target,
+        final Villager child
+    ) {
+        if (!enabled || source == null || target == null || child == null) {
+            return false;
+        }
+        try {
+            final EntityType parentType = CraftEntityType.minecraftToBukkit(source.getType());
+            final EntityType partnerType = CraftEntityType.minecraftToBukkit(target.getType());
+            final EntityType childType = CraftEntityType.minecraftToBukkit(child.getType());
+            final Optional<BreedPlan> plan = GeneticsProfiles.resolveBreed(parentType, partnerType, childType);
+            if (plan.isEmpty()) {
+                return false;
+            }
+            final Genome parentGenome = getOrCreate(source, source.getRandom());
+            final Genome partnerGenome = getOrCreate(target, target.getRandom());
+            final String environmentalVariant = VillagerType.byBiome(
+                source.level().getBiome(source.blockPosition())
+            ).identifier().getPath();
+            final Optional<Genome> childGenome = plan.get().breed(
+                parentGenome,
+                partnerGenome,
+                asGenerator(source.getRandom()),
+                BreedContext.of(parentType, partnerType, childType, environmentalVariant)
+            );
+            if (childGenome.isEmpty()) {
+                return false;
+            }
+            CACHE.put(child.getUUID(), new CacheEntry(plan.get().childProfile().id(), childGenome.get()));
+            return true;
+        } catch (final RuntimeException ignored) {
+            return false;
+        }
     }
 
     /**
@@ -259,16 +424,27 @@ public final class AnimalGenetics {
         final Genome child,
         final @Nullable EntityType childType
     ) {
-        final PhenotypeSnapshot childPhenotype = PHENOTYPE.decode(child);
+        final GeneticsProfile profile = childType == null ? GENERIC_PROFILE : profileFor(childType);
+        return snapshotsOf(mother, father, child, childType, profile);
+    }
+
+    private static BreedGenetics snapshotsOf(
+        final Genome mother,
+        final Genome father,
+        final Genome child,
+        final @Nullable EntityType childType,
+        final GeneticsProfile profile
+    ) {
+        final PhenotypeSnapshot childPhenotype = profile.phenotype(child);
         final NamespacedKey childVariant = childType == null
             ? null
             : PhenotypeVariantResolver.resolve(childType, childPhenotype).orElse(null);
         return new BreedGenetics(
-            GenotypeSnapshot.from(mother, CATALOG),
-            GenotypeSnapshot.from(father, CATALOG),
-            GenotypeSnapshot.from(child, CATALOG),
-            PHENOTYPE.decode(mother),
-            PHENOTYPE.decode(father),
+            GenotypeSnapshot.from(mother, profile.catalog()),
+            GenotypeSnapshot.from(father, profile.catalog()),
+            GenotypeSnapshot.from(child, profile.catalog()),
+            profile.phenotype(mother),
+            profile.phenotype(father),
             childPhenotype,
             childVariant
         );
@@ -282,16 +458,7 @@ public final class AnimalGenetics {
         final Genome parentB,
         final RandomSource random
     ) {
-        if (!GeneticMatePolicy.allowsMate(parentA, parentB)) {
-            return Optional.empty();
-        }
-        final BreedingEngine engine = new BreedingEngine(
-            CATALOG,
-            RecombinationSettings.DEFAULT,
-            MutationSettings.DEFAULT,
-            asGenerator(random)
-        );
-        return engine.cross(parentA, parentB);
+        return crossWithProfile(GENERIC_PROFILE, parentA, parentB, asGenerator(random));
     }
 
     public static Optional<BreedingResult> cross(
@@ -305,6 +472,23 @@ public final class AnimalGenetics {
             return Optional.empty();
         }
         return new BreedingEngine(CATALOG, recombination, mutation, random).cross(parentA, parentB);
+    }
+
+    private static Optional<BreedingResult> crossWithProfile(
+        final GeneticsProfile profile,
+        final Genome parentA,
+        final Genome parentB,
+        final RandomGenerator random
+    ) {
+        if (!GeneticMatePolicy.allowsMate(parentA, parentB)) {
+            return Optional.empty();
+        }
+        return new BreedingEngine(
+            profile.catalog(),
+            profile.recombination(),
+            profile.mutation(),
+            random
+        ).cross(parentA, parentB);
     }
 
     private static RandomGenerator asGenerator(final RandomSource random) {

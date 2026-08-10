@@ -85,16 +85,26 @@
          ItemStack itemStack = this.getItemBySlot(EquipmentSlot.MAINHAND);
          if (!itemStack.isEmpty()) {
              this.spawnAtLocation(level, itemStack);
-@@ -890,6 +_,19 @@
+@@ -890,6 +_,29 @@
                      offspring.addTrustedEntity(partnerLoveCause);
                  }
  
-+                // CraftBukkit start - call EntityBreedEvent
++                // mintychochip start - genetics recombinant child + breed event metadata
++                final dev.mintychochip.genetics.AnimalGenetics.BreedPrep geneticsPrep =
++                    dev.mintychochip.genetics.AnimalGenetics.prepareBreed(this.animal, this.partner, offspring);
++                final net.minecraft.world.entity.animal.Animal eventMother =
++                    geneticsPrep != null ? geneticsPrep.mother() : this.animal;
++                final net.minecraft.world.entity.animal.Animal eventFather =
++                    geneticsPrep != null ? geneticsPrep.father() : this.partner;
++                final dev.mintychochip.genetics.dto.BreedGenetics breedGenetics =
++                    geneticsPrep != null ? geneticsPrep.genetics() : null;
++                // mintychochip end - genetics recombinant child + breed event metadata
 +                offspring.setAge(-24000);
 +                offspring.snapTo(this.animal.getX(), this.animal.getY(), this.animal.getZ(), 0.0F, 0.0F);
 +                int experience = this.animal.getRandom().nextInt(7) + 1;
-+                org.bukkit.event.entity.EntityBreedEvent entityBreedEvent = org.bukkit.craftbukkit.event.CraftEventFactory.callEntityBreedEvent(offspring, this.animal, this.partner, loveCause, this.animal.breedItem, experience);
++                org.bukkit.event.entity.EntityBreedEvent entityBreedEvent = org.bukkit.craftbukkit.event.CraftEventFactory.callEntityBreedEvent(offspring, eventMother, eventFather, loveCause, this.animal.breedItem, experience, breedGenetics);
 +                if (entityBreedEvent.isCancelled()) {
++                    dev.mintychochip.genetics.AnimalGenetics.discardBreed(offspring);
 +                    this.animal.resetLove();
 +                    this.partner.resetLove();
 +                    return;
