@@ -607,6 +607,9 @@ public final class CraftServer implements Server {
             // mintychochip start - item provenance tracking
             dev.mintychochip.provenance.ProvenanceBootstrap.ensureInstalled(this);
             // mintychochip end - item provenance
+            // mintychochip start - genetics admin diagnostics
+            dev.mintychochip.genetics.GeneticsBootstrap.ensureInstalled(this);
+            // mintychochip end - genetics admin diagnostics
         }
     }
 
