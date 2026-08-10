@@ -2,9 +2,9 @@ package dev.mintychochip.genetics.profile;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import org.bukkit.entity.EntityType;
 
 /**
@@ -53,13 +53,12 @@ public final class GeneticsProfiles {
         map.put(EntityType.STRIDER, EmptyGeneticsProfile.of("strider"));
         map.put(EntityType.TURTLE, EmptyGeneticsProfile.of("turtle"));
 
-        // Task 3 replaces these placeholders with custom profiles.
-        map.put(EntityType.PANDA, EmptyGeneticsProfile.of("panda"));
-        map.put(EntityType.HORSE, EmptyGeneticsProfile.of("horse"));
-        map.put(EntityType.DONKEY, EmptyGeneticsProfile.of("donkey"));
-        map.put(EntityType.MULE, EmptyGeneticsProfile.of("mule"));
-        map.put(EntityType.LLAMA, EmptyGeneticsProfile.of("llama"));
-        map.put(EntityType.VILLAGER, EmptyGeneticsProfile.of("villager"));
+        map.put(EntityType.PANDA, PandaGeneticsProfile.INSTANCE);
+        map.put(EntityType.HORSE, EquineGeneticsProfile.HORSE);
+        map.put(EntityType.DONKEY, EquineGeneticsProfile.DONKEY);
+        map.put(EntityType.MULE, EquineGeneticsProfile.MULE);
+        map.put(EntityType.LLAMA, LlamaGeneticsProfile.INSTANCE);
+        map.put(EntityType.VILLAGER, VillagerGeneticsProfile.INSTANCE);
         map.put(EntityType.HAPPY_GHAST, EmptyGeneticsProfile.of("happy_ghast"));
 
         return Collections.unmodifiableMap(map);
@@ -76,5 +75,52 @@ public final class GeneticsProfiles {
     public static GeneticsProfile forEntityType(final EntityType entityType) {
         Objects.requireNonNull(entityType, "entityType");
         return EXPLICIT.getOrDefault(entityType, GenericGeneticsProfile.INSTANCE);
+    }
+
+    /**
+     * Resolves a permitted parent/child entity combination to its family and
+     * child profile. Mules are offspring-only; they cannot be parents.
+     */
+    public static Optional<BreedPlan> resolveBreed(
+        final EntityType parentA,
+        final EntityType parentB,
+        final EntityType child
+    ) {
+        Objects.requireNonNull(parentA, "parentA");
+        Objects.requireNonNull(parentB, "parentB");
+        Objects.requireNonNull(child, "child");
+
+        if (child == EntityType.MULE) {
+            if (isHorsePair(parentA, parentB)) {
+                return Optional.of(new BreedPlan(EquineGeneticsProfile.FAMILY, EquineGeneticsProfile.MULE));
+            }
+            return Optional.empty();
+        }
+        if (isEquine(parentA) || isEquine(parentB) || isEquine(child)) {
+            if (parentA.equals(parentB) && parentA.equals(child)
+                && (parentA == EntityType.HORSE || parentA == EntityType.DONKEY)) {
+                return Optional.of(new BreedPlan(
+                    EquineGeneticsProfile.FAMILY,
+                    EquineGeneticsProfile.forEntityType(child)
+                ));
+            }
+            return Optional.empty();
+        }
+        if (parentA == EntityType.VILLAGER && parentB == EntityType.VILLAGER && child == EntityType.VILLAGER) {
+            return Optional.of(new BreedPlan(VillagerGeneticsProfile.INSTANCE, VillagerGeneticsProfile.INSTANCE));
+        }
+        if (parentA != parentB || parentA != child || !isExplicit(parentA) || parentA == EntityType.HAPPY_GHAST) {
+            return Optional.empty();
+        }
+        return Optional.of(new BreedPlan(forEntityType(parentA), forEntityType(child)));
+    }
+
+    private static boolean isHorsePair(final EntityType parentA, final EntityType parentB) {
+        return (parentA == EntityType.HORSE && parentB == EntityType.DONKEY)
+            || (parentA == EntityType.DONKEY && parentB == EntityType.HORSE);
+    }
+
+    private static boolean isEquine(final EntityType entityType) {
+        return entityType == EntityType.HORSE || entityType == EntityType.DONKEY || entityType == EntityType.MULE;
     }
 }
