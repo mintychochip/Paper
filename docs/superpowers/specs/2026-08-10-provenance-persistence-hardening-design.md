@@ -88,7 +88,7 @@ The protocol is:
 2. If `migration-complete.json` exists and its destination checksum set matches the current files, use the new root. Do not merge or replay the legacy backup.
 3. If the new root is absent and the legacy root exists, create a staging directory beside the destination. Copy the SQLite database, `-wal`, `-shm`, active and replay spill files, and all audit rotations. Force each copied file and the staging directory, then verify size and SHA-256 against the source.
 4. Atomically rename the verified staging directory to the new root when the filesystem supports it. When an atomic directory rename is unavailable, keep the staging marker and use verified per-file moves; never delete the source during this step.
-5. Open the copied repository, run schema migration, replay spill, and run the repository integrity check. Only after all three succeed, write `migration-complete.json` containing source path, destination path, timestamp, and copied-file checksums.
+5. Open the copied repository, run schema migration, replay spill, and run the repository integrity check on the dedicated provenance bootstrap executor. The bootstrap caller waits on a readiness future rather than performing JDBC or recovery I/O on the game thread. Only after all three succeed, write `migration-complete.json` containing source path, destination path, timestamp, and copied-file checksums.
 6. Rename the legacy directory to `mintychochip.legacy-<timestamp>` and retain it as a recovery backup. The migration marker points to that backup.
 7. If both roots exist without a completed marker, resume a matching staging migration. If both roots contain independently changing databases or their checksums do not match the recorded migration state, do not merge them; leave both untouched, report `migration-conflict`, and run provenance in disabled/degraded mode until an operator resolves the conflict.
 8. If a completed destination exists alongside a legacy backup, the destination is authoritative. The legacy backup is never replayed into it.
@@ -156,7 +156,7 @@ A repository failure is returned to the writer. It does not permanently convert 
 
 ## Writer and spill protocol
 
-`ProvenanceWriter` owns a monotonically increasing write sequence. It seeds the sequence from `maxWriteSequence()` after spill recovery and assigns a sequence to each lineage/live/collision update. Audit records use a UUID event ID; normal audit IDs are generated at enqueue time, while collision audit IDs derive from the collision dedupe key.
+`ProvenanceWriter` owns a monotonically increasing write sequence. It seeds the sequence from `maxWriteSequence()` after bootstrap-executor spill recovery and assigns a sequence to each lineage/live/collision update. Audit records use a UUID event ID; normal audit IDs are generated at enqueue time, while collision audit IDs derive from the collision dedupe key.
 
 The version-2 spill frame is a JSON record with a sequence and discriminator:
 
@@ -166,13 +166,15 @@ The version-2 spill frame is a JSON record with a sequence and discriminator:
 
 `ProvenanceSpillJournal` writes complete newline frames through a synchronized `FileChannel`, calls `force(true)` after an append, and uses the existing active-to-`.replay` seize/ack protocol. Version-1 frames remain readable with a sequence of zero and file order as their ordering source. A truncated final frame is quarantined as an incomplete durability attempt; corruption before the final frame leaves `.replay` unacknowledged and blocks normal recovery.
 
-Writer states are explicit: `RUNNING`, `DEGRADED`, `DRAINING`, and `CLOSED`.
+Writer states are explicit: `STARTING`, `RUNNING`, `DEGRADED`, `DRAINING`, and `CLOSED`.
 
 - Queue offer succeeds: the item is owned by the writer but is not yet crash-durable.
 - Queue full: append a complete spill frame; critical append failure leaves the item in a blocking retry path and increments a critical-failure metric.
 - Repository unavailable or transaction failure: stop applying new items, preserve the failed batch in the spill journal, close the failed connection, and retry repository open with bounded backoff.
 - Successful transaction: acknowledge only the seized spill file after commit; update writer-owned durable audit/collision snapshots; then append the optional JSONL mirror.
 - Shutdown: stop new producers, drain queue, apply spill, commit, close mirror and repository, and report an incomplete flush if the timeout expires. Remaining spill is intentionally left for next-start recovery.
+
+Production startup constructs the queue and spill journal without opening SQLite, sets `STARTING`, and submits migration/open/replay/seed to the dedicated `mintychochip-provenance-bootstrap` executor. `ProvenanceBootstrap` waits on the readiness future before enabling provenance hooks. The waiting caller performs no JDBC or recovery I/O. Test installs await the same future before assertions.
 
 No critical write is passed through `process` with a null or failed repository. Audit is also spilled while degraded; the existing audit-drop counter is reserved for an actual spill failure.
 
