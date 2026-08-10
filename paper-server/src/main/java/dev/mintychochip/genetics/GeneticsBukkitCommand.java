@@ -45,7 +45,7 @@ public final class GeneticsBukkitCommand extends Command {
         super(
             "genetics",
             "Inspect mintychochip animal genetics",
-            "/genetics <inspect [selector]|profile <entity-type>>",
+            "/genetics <inspect [selector]|profile <entity-type|generic>>",
             List.of("genotype", "genes")
         );
         this.setPermission(PERMISSION);
@@ -93,6 +93,7 @@ public final class GeneticsBukkitCommand extends Command {
             for (final EntityType type : EntityType.values()) {
                 types.add(type.name().toLowerCase(Locale.ROOT));
             }
+            types.add("generic");
             return filter(types, args[1]);
         }
         return Collections.emptyList();
@@ -102,7 +103,7 @@ public final class GeneticsBukkitCommand extends Command {
         sender.sendMessage(text("Genetics commands", GOLD, BOLD));
         sender.sendMessage(text("  /genetics inspect [selector]", AQUA)
             .append(text("  read one ageable genome without creating it", GRAY)));
-        sender.sendMessage(text("  /genetics profile <entity-type>", AQUA)
+        sender.sendMessage(text("  /genetics profile <entity-type|generic>", AQUA)
             .append(text("  show registered locus metadata", GRAY)));
     }
 
@@ -115,6 +116,7 @@ public final class GeneticsBukkitCommand extends Command {
         if (args.length == 0) {
             if (!(sender instanceof Player player)) {
                 sender.sendMessage(text("Console must specify an entity selector.", RED));
+                usage(sender);
                 return;
             }
             target = player.getTargetEntity(TARGET_DISTANCE, false);
@@ -157,7 +159,7 @@ public final class GeneticsBukkitCommand extends Command {
             return;
         }
         if (inspected.isEmpty()) {
-            sender.sendMessage(text("No genome attached; inspection did not create one.", YELLOW));
+            printMissingGenome(sender, target, ageable);
             return;
         }
         printInspection(sender, inspected.orElseThrow());
@@ -168,6 +170,17 @@ public final class GeneticsBukkitCommand extends Command {
             return null;
         }
         return craft.getHandle() instanceof AgeableMob ageable ? ageable : null;
+    }
+    private static void printMissingGenome(
+        final CommandSender sender,
+        final Entity target,
+        final AgeableMob ageable
+    ) {
+        sender.sendMessage(text("Genetics inspection", GOLD, BOLD));
+        sender.sendMessage(keyValue("entity", target.getType().name(), AQUA));
+        sender.sendMessage(keyValue("uuid", target.getUniqueId().toString(), WHITE));
+        sender.sendMessage(keyValue("profile", AnimalGenetics.profile(ageable).id(), AQUA));
+        sender.sendMessage(text("no genome attached; inspection did not create one.", YELLOW));
     }
 
     private static void printInspection(
@@ -239,14 +252,24 @@ public final class GeneticsBukkitCommand extends Command {
 
     private static void profile(final CommandSender sender, final String[] args) {
         if (args.length != 1) {
-            sender.sendMessage(text("Usage: /genetics profile <entity-type>", GRAY));
+            sender.sendMessage(text("Usage: /genetics profile <entity-type|generic>", GRAY));
             return;
         }
-        final String typeName = args[0].toLowerCase(Locale.ROOT).startsWith("minecraft:")
-            ? args[0].substring("minecraft:".length()) : args[0];
-        final EntityType type = EntityType.getByKey(NamespacedKey.minecraft(typeName)).orElse(null);
+        final String normalized = args[0].toLowerCase(Locale.ROOT);
+        final String typeName = normalized.startsWith("minecraft:")
+            ? normalized.substring("minecraft:".length()) : normalized;
+        final EntityType type;
+        try {
+            type = typeName.equals("generic")
+                ? null : EntityType.getByKey(NamespacedKey.minecraft(typeName)).orElse(null);
+        } catch (final IllegalArgumentException ex) {
+            sender.sendMessage(text("Unknown entity type: ", RED).append(text(args[0], YELLOW)));
+            sender.sendMessage(text("Usage: /genetics profile <entity-type|generic>", GRAY));
+            return;
+        }
         if (type == null && !typeName.equals("generic")) {
             sender.sendMessage(text("Unknown entity type: ", RED).append(text(args[0], YELLOW)));
+            sender.sendMessage(text("Usage: /genetics profile <entity-type|generic>", GRAY));
             return;
         }
         final GeneticsProfile profile = type == null
@@ -257,7 +280,7 @@ public final class GeneticsBukkitCommand extends Command {
         sender.sendMessage(keyValue("mutation", mutationSummary(profile), GRAY));
         sender.sendMessage(keyValue("recombination", recombinationSummary(profile), GRAY));
         if (profile.catalog().size() == 0) {
-            sender.sendMessage(text("loci: none", GRAY));
+            sender.sendMessage(text("no loci", GRAY));
             return;
         }
         sender.sendMessage(text("loci", GOLD));
@@ -266,6 +289,8 @@ public final class GeneticsBukkitCommand extends Command {
                 GeneticsCatalogDescriptions.describe(profile, locus);
             sender.sendMessage(text("  " + locus.id().key(), AQUA));
             sender.sendMessage(text("    phenotype: " + locus.phenotypeKey()
+                + "  chromosome: " + locus.chromosome()
+                + "  position: " + locus.position()
                 + "  inheritance: " + locus.inheritance()
                 + "  dominance: " + locus.dominance(), GRAY));
             sender.sendMessage(text(description.labels().isEmpty()

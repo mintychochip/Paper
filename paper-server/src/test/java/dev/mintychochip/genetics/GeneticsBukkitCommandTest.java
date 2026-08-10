@@ -1,6 +1,7 @@
 package dev.mintychochip.genetics;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -57,7 +58,7 @@ class GeneticsBukkitCommandTest {
 
         final String output = text(messages);
         assertTrue(output.contains("/genetics inspect [selector]"));
-        assertTrue(output.contains("/genetics profile <entity-type>"));
+        assertTrue(output.contains("/genetics profile <entity-type|generic>"));
     }
 
     @Test
@@ -83,6 +84,8 @@ class GeneticsBukkitCommandTest {
         assertTrue(output.contains("sheep.dilution"));
         assertTrue(output.contains("sheep.albinism"));
         assertTrue(output.contains("BLACK"));
+        assertTrue(output.contains("chromosome: 1"));
+        assertTrue(output.contains("position: 1"));
     }
 
     @Test
@@ -90,13 +93,34 @@ class GeneticsBukkitCommandTest {
         final CommandSender sender = permittedSender();
         final List<Component> messages = capture(sender);
 
-        command.execute(sender, "genetics", new String[] {"profile", "generic"});
+        command.execute(sender, "genetics", new String[] {"profile", "GENERIC"});
 
         final String output = text(messages);
         assertTrue(output.contains("coat"));
         assertTrue(output.contains("vitality"));
         assertTrue(output.contains("mt-vigor"));
         assertTrue(output.contains("labels: not enumerated"));
+    }
+    @Test
+    void emptyProfileUsesDocumentedNoLociMarker() {
+        final CommandSender sender = permittedSender();
+        final List<Component> messages = capture(sender);
+
+        command.execute(sender, "genetics", new String[] {"profile", "armadillo"});
+
+        assertTrue(text(messages).contains("no loci"));
+    }
+
+    @Test
+    void malformedProfileNameReturnsUsageInsteadOfThrowing() {
+        final CommandSender sender = permittedSender();
+        final List<Component> messages = capture(sender);
+
+        command.execute(sender, "genetics", new String[] {"profile", "sheep!"});
+
+        final String output = text(messages);
+        assertTrue(output.contains("Unknown entity type: sheep!"));
+        assertTrue(output.contains("/genetics profile <entity-type|generic>"));
     }
 
     @Test
@@ -112,6 +136,30 @@ class GeneticsBukkitCommandTest {
         command.execute(player, "genetics", new String[] {"inspect"});
 
         assertTrue(text(messages).contains("requires an ageable mob"));
+    }
+    @Test
+    void missingGenomeInspectionShowsIdentityWithoutCreatingOne() {
+        final UUID id = UUID.randomUUID();
+        final AgeableMob ageable = mock(AgeableMob.class);
+        when(ageable.getUUID()).thenReturn(id);
+        doReturn(EntityTypes.SHEEP).when(ageable).getType();
+        final CraftEntity target = mock(CraftEntity.class);
+        doReturn(ageable).when(target).getHandle();
+        when(target.getType()).thenReturn(EntityType.SHEEP);
+        when(target.getUniqueId()).thenReturn(id);
+        final Player player = mock(Player.class);
+        when(player.isOp()).thenReturn(true);
+        doReturn(target).when(player).getTargetEntity(32, false);
+        final List<Component> messages = capture(player);
+
+        command.execute(player, "genetics", new String[] {"inspect"});
+
+        final String output = text(messages);
+        assertTrue(output.contains("entity: SHEEP"));
+        assertTrue(output.contains("uuid: " + id));
+        assertTrue(output.contains("profile: sheep"));
+        assertTrue(output.contains("no genome attached"));
+        assertNull(AnimalGenetics.getGenome(id));
     }
 
     @Test
