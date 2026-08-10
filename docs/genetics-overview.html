@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0d13">
+  <meta name="description" content="A visual tour of Alkahest's genetics engine, profile coverage, tests, and a small deterministic breeding model.">
+  <title>Alkahest Genetics Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080a10;
+      --panel: rgba(17, 21, 32, .88);
+      --panel-strong: #131827;
+      --panel-soft: rgba(21, 27, 42, .7);
+      --line: rgba(184, 194, 223, .14);
+      --line-strong: rgba(184, 194, 223, .26);
+      --text: #edf0fa;
+      --muted: #9da7bf;
+      --faint: #68728b;
+      --copper: #f0a56c;
+      --copper-soft: rgba(240, 165, 108, .15);
+      --violet: #a68bff;
+      --violet-soft: rgba(166, 139, 255, .14);
+      --cyan: #77d7e9;
+      --cyan-soft: rgba(119, 215, 233, .13);
+      --green: #7cdaaa;
+      --green-soft: rgba(124, 218, 170, .13);
+      --red: #ff8f91;
+      --red-soft: rgba(255, 143, 145, .13);
+      --shadow: 0 24px 80px rgba(0, 0, 0, .26);
+      --radius: 22px;
+      --radius-sm: 13px;
+      --max: 1180px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(122, 86, 199, .2), transparent 33rem),
+        radial-gradient(circle at 94% 8%, rgba(43, 145, 181, .13), transparent 29rem),
+        linear-gradient(180deg, #0a0c14 0%, var(--bg) 48%, #0b0e16 100%);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    a { color: inherit; }
+    button, select, input { font: inherit; }
+    button, select, input[type="number"] { border-radius: 10px; }
+    button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible {
+      outline: 3px solid rgba(119, 215, 233, .7);
+      outline-offset: 3px;
+    }
+
+    .shell { width: min(calc(100% - 40px), var(--max)); margin: 0 auto; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 22px 0 12px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      font-size: .78rem;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+    .brand-mark {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border: 1px solid rgba(240, 165, 108, .55);
+      border-radius: 9px;
+      color: var(--copper);
+      background: linear-gradient(145deg, rgba(240, 165, 108, .22), rgba(166, 139, 255, .2));
+      box-shadow: 0 0 28px rgba(240, 165, 108, .13);
+      font-size: .9rem;
+    }
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 7px;
+    }
+    .nav a {
+      padding: 7px 10px;
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: .76rem;
+      text-decoration: none;
+    }
+    .nav a:hover { color: var(--text); background: rgba(255, 255, 255, .06); }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(360px, .92fr);
+      align-items: center;
+      gap: clamp(36px, 7vw, 88px);
+      min-height: 570px;
+      padding: 74px 0 70px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--copper);
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: .17em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before {
+      width: 25px;
+      height: 1px;
+      background: currentColor;
+      content: "";
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      max-width: 700px;
+      margin: 20px 0 20px;
+      font-size: clamp(3.3rem, 8vw, 6.7rem);
+      font-weight: 760;
+      letter-spacing: -.085em;
+      line-height: .91;
+    }
+    .gradient-text {
+      background: linear-gradient(110deg, #fff 8%, #c8c0ff 50%, #f5b77d 92%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .hero-copy > p {
+      max-width: 610px;
+      color: var(--muted);
+      font-size: 1.08rem;
+    }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 11px; margin: 28px 0 0; }
+    .button-link, .primary-button, .ghost-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 43px;
+      padding: 0 16px;
+      border: 1px solid transparent;
+      border-radius: 11px;
+      cursor: pointer;
+      font-size: .85rem;
+      font-weight: 760;
+      text-decoration: none;
+      transition: transform .18s ease, border-color .18s ease, background .18s ease;
+    }
+    .button-link:hover, .primary-button:hover, .ghost-button:hover { transform: translateY(-2px); }
+    .primary-button, .button-link {
+      color: #1c1310;
+      background: linear-gradient(135deg, #f6bd85, #e99266);
+      box-shadow: 0 10px 28px rgba(233, 146, 102, .17);
+    }
+    .ghost-button { color: var(--text); border-color: var(--line-strong); background: rgba(255, 255, 255, .04); }
+    .ghost-button:hover { border-color: rgba(119, 215, 233, .5); background: var(--cyan-soft); }
+    .hero-note {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-top: 23px;
+      color: var(--faint);
+      font-size: .76rem;
+    }
+    .status-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--green); box-shadow: 0 0 15px var(--green); }
+
+    .genome-art {
+      position: relative;
+      min-height: 420px;
+      padding: 22px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      background:
+        linear-gradient(145deg, rgba(166, 139, 255, .13), transparent 44%),
+        linear-gradient(320deg, rgba(119, 215, 233, .09), transparent 38%),
+        rgba(14, 17, 28, .76);
+      box-shadow: var(--shadow);
+    }
+    .genome-art::after {
+      position: absolute;
+      right: -50px;
+      bottom: -70px;
+      width: 220px;
+      height: 220px;
+      border: 1px solid rgba(240, 165, 108, .22);
+      border-radius: 50%;
+      box-shadow: 0 0 0 35px rgba(240, 165, 108, .035), 0 0 0 70px rgba(240, 165, 108, .02);
+      content: "";
+    }
+    .art-label { color: var(--faint); font-size: .68rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+    .chromosome-stack { position: relative; height: 292px; margin-top: 23px; }
+    .chromosome {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 74%;
+      min-height: 74px;
+      padding: 0 18px;
+      border: 1px solid var(--line-strong);
+      border-radius: 17px;
+      background: rgba(22, 27, 44, .86);
+      box-shadow: 0 18px 35px rgba(0, 0, 0, .2);
+    }
+    .chromosome:nth-child(1) { top: 15px; left: 2%; transform: rotate(-4deg); border-color: rgba(166, 139, 255, .45); }
+    .chromosome:nth-child(2) { top: 101px; right: 1%; transform: rotate(4deg); border-color: rgba(119, 215, 233, .4); }
+    .chromosome:nth-child(3) { top: 187px; left: 10%; transform: rotate(-2deg); border-color: rgba(240, 165, 108, .48); }
+    .chromosome strong { display: block; font-size: 1.02rem; }
+    .chromosome small { color: var(--muted); font-size: .71rem; }
+    .gene-bars { display: flex; gap: 5px; align-items: center; }
+    .gene-bars i { display: block; width: 8px; height: 29px; border-radius: 5px; background: var(--violet); box-shadow: 0 0 15px rgba(166, 139, 255, .25); }
+    .gene-bars i:nth-child(2n) { height: 18px; background: var(--cyan); }
+    .gene-bars i:nth-child(3n) { height: 35px; background: var(--copper); }
+    .art-footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+    .art-footer strong { display: block; font-size: 1.18rem; }
+    .art-footer span { color: var(--muted); font-size: .77rem; }
+    .art-foot-mark { color: var(--copper); font-size: 2rem; font-weight: 800; letter-spacing: -.1em; }
+
+    .section { padding: 74px 0; }
+    .section-header { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+    .section-header h2 { margin-bottom: 0; font-size: clamp(1.85rem, 4vw, 2.9rem); letter-spacing: -.055em; line-height: 1; }
+    .section-header p { max-width: 520px; margin-bottom: 0; color: var(--muted); font-size: .9rem; }
+    .section-kicker { margin-bottom: 11px; color: var(--violet); font-size: .7rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+
+    .architecture-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .card {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: 0 15px 45px rgba(0, 0, 0, .12);
+    }
+    .architecture-card { min-height: 238px; padding: 23px; overflow: hidden; }
+    .architecture-card::before { position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: var(--accent); content: ""; opacity: .75; }
+    .architecture-card.api { --accent: var(--violet); }
+    .architecture-card.server { --accent: var(--cyan); }
+    .architecture-card.hooks { --accent: var(--copper); }
+    .card-icon { display: grid; width: 39px; height: 39px; margin-bottom: 19px; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 12px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); font-size: .73rem; font-weight: 900; }
+    .architecture-card h3 { margin-bottom: 7px; font-size: 1.1rem; letter-spacing: -.025em; }
+    .architecture-card p { min-height: 69px; margin-bottom: 18px; color: var(--muted); font-size: .82rem; }
+    .path { display: block; color: var(--accent); font-family: "SFMono-Regular", Consolas, monospace; font-size: .67rem; line-height: 1.45; overflow-wrap: anywhere; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      align-items: center;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .flow-step { position: relative; padding: 15px 13px; border: 1px solid var(--line); border-radius: 15px; background: var(--panel-soft); text-align: center; }
+    .flow-step:not(:last-child)::after { position: absolute; top: 50%; right: -17px; width: 23px; height: 1px; background: linear-gradient(90deg, var(--violet), var(--cyan)); content: ""; opacity: .7; }
+    .flow-step b { display: block; font-size: .82rem; }
+    .flow-step span { display: block; margin-top: 3px; color: var(--muted); font-size: .68rem; }
+    .flow-step:nth-child(2) b { color: var(--violet); }
+    .flow-step:nth-child(3) b { color: var(--cyan); }
+    .flow-step:nth-child(4) b { color: var(--copper); }
+    .flow-step:nth-child(5) b { color: var(--green); }
+
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 22px 0 14px; }
+    .metric { padding: 19px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(145deg, rgba(255,255,255,.045), rgba(255,255,255,.015)); }
+    .metric-value { display: block; margin-bottom: 4px; color: var(--text); font-size: 2.2rem; font-weight: 760; letter-spacing: -.07em; line-height: 1; }
+    .metric:nth-child(1) .metric-value { color: var(--green); }
+    .metric:nth-child(2) .metric-value { color: var(--copper); }
+    .metric:nth-child(3) .metric-value { color: var(--violet); }
+    .metric:nth-child(4) .metric-value { color: var(--cyan); }
+    .metric-label { color: var(--muted); font-size: .72rem; }
+
+    .profiles-wrap { display: grid; grid-template-columns: .82fr 1.18fr; gap: 15px; }
+    .profile-summary { padding: 24px; }
+    .profile-summary h3 { margin-bottom: 10px; font-size: 1.15rem; }
+    .profile-summary p { margin-bottom: 21px; color: var(--muted); font-size: .83rem; }
+    .legend { display: grid; gap: 9px; }
+    .legend-row { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: .75rem; }
+    .legend-dot { width: 9px; height: 9px; border-radius: 3px; background: var(--legend); }
+    .profile-list { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; padding: 24px; }
+    .profile-badge { display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.035); color: var(--muted); font-size: .72rem; }
+    .profile-badge::before { width: 6px; height: 6px; border-radius: 50%; background: var(--badge); box-shadow: 0 0 10px color-mix(in srgb, var(--badge) 60%, transparent); content: ""; }
+    .profile-badge.variant { --badge: var(--violet); }
+    .profile-badge.special { --badge: var(--copper); }
+    .profile-badge.empty { --badge: var(--cyan); }
+
+    .evidence-grid { display: grid; grid-template-columns: 1.12fr .88fr; gap: 15px; }
+    .suite-card { padding: 24px; }
+    .suite-list { display: grid; gap: 7px; }
+    .suite-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .suite-row:last-child { border-bottom: 0; }
+    .suite-name { color: var(--muted); font-family: "SFMono-Regular", Consolas, monospace; font-size: .73rem; overflow-wrap: anywhere; }
+    .suite-count { color: var(--green); font-size: .77rem; font-weight: 800; white-space: nowrap; }
+    .notice-card { padding: 24px; }
+    .notice-card h3 { margin-bottom: 10px; font-size: 1.08rem; }
+    .notice-card p { color: var(--muted); font-size: .82rem; }
+    .notice-card.warning { border-color: rgba(240, 165, 108, .29); background: linear-gradient(145deg, var(--copper-soft), var(--panel)); }
+    .notice-card.gap { margin-top: 12px; border-color: rgba(166, 139, 255, .26); background: linear-gradient(145deg, var(--violet-soft), var(--panel)); }
+    .notice-label { display: inline-flex; margin-bottom: 15px; padding: 5px 8px; border-radius: 6px; background: rgba(255,255,255,.07); color: var(--copper); font-size: .65rem; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+    .notice-card.gap .notice-label { color: var(--violet); }
+    .code-line { display: block; margin-top: 12px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: rgba(0,0,0,.2); font-family: "SFMono-Regular", Consolas, monospace; font-size: .67rem; overflow-wrap: anywhere; }
+
+    .lab-section { padding-top: 86px; }
+    .lab-grid { display: grid; grid-template-columns: .78fr 1.22fr; gap: 15px; align-items: start; }
+    .lab-grid > * { min-width: 0; }
+    .controls-card, .result-card { padding: 25px; }
+    .lab-badge { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 13px; padding: 6px 9px; border: 1px solid rgba(119, 215, 233, .26); border-radius: 7px; color: var(--cyan); background: var(--cyan-soft); font-size: .65rem; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
+    .controls-card h3, .result-card h3 { margin-bottom: 7px; font-size: 1.2rem; letter-spacing: -.025em; }
+    .controls-card > p, .result-card > p { color: var(--muted); font-size: .8rem; }
+    .parent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin: 22px 0 13px; }
+    .parent-card { padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.028); }
+    .parent-card h4 { margin: 0 0 11px; color: var(--copper); font-size: .74rem; letter-spacing: .07em; text-transform: uppercase; }
+    .field { display: grid; gap: 5px; margin-top: 9px; }
+    .field:first-of-type { margin-top: 0; }
+    .field label { color: var(--faint); font-size: .67rem; font-weight: 700; }
+    select, input[type="number"] { width: 100%; min-height: 37px; padding: 0 9px; border: 1px solid var(--line-strong); color: var(--text); background: #101523; font-size: .77rem; }
+    select:hover, input[type="number"]:hover { border-color: rgba(119, 215, 233, .42); }
+    .seed-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+    .seed-row .field { margin: 0; }
+    .button-row { display: flex; gap: 9px; margin-top: 15px; }
+    .button-row button { flex: 1; }
+    .primary-button { border: 0; }
+    .disclaimer { margin: 18px 0 0; padding: 10px 11px; border-left: 2px solid var(--cyan); color: var(--muted); background: rgba(119, 215, 233, .055); font-size: .69rem; }
+    .disclaimer code { overflow-wrap: anywhere; }
+
+    .result-card { min-height: 410px; }
+    .result-status { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 18px 0 17px; padding: 12px 13px; border: 1px solid rgba(124, 218, 170, .26); border-radius: 12px; background: var(--green-soft); }
+    .result-status.rejected { border-color: rgba(255, 143, 145, .35); background: var(--red-soft); }
+    .result-status strong { font-size: .82rem; }
+    .result-status span { color: var(--muted); font-size: .7rem; }
+    .result-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+    .result-cell { min-height: 84px; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.028); }
+    .result-cell label { display: block; margin-bottom: 8px; color: var(--faint); font-size: .64rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+    .result-cell strong { display: block; color: var(--text); font-size: 1.08rem; letter-spacing: -.025em; }
+    .result-cell small { display: block; margin-top: 2px; color: var(--muted); font-size: .66rem; }
+    .allele-strip { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
+    .allele { display: inline-flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: rgba(255,255,255,.035); font-family: "SFMono-Regular", Consolas, monospace; font-size: .68rem; }
+    .allele b { color: var(--copper); font-family: inherit; }
+    .log-title { margin: 21px 0 8px; color: var(--faint); font-size: .66rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .event-log { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    .event-log li { padding: 7px 9px; border-left: 2px solid rgba(166, 139, 255, .55); color: var(--muted); background: rgba(166, 139, 255, .055); font-size: .7rem; }
+    .event-log li strong { color: var(--text); font-weight: 650; }
+
+    .footer { display: flex; justify-content: space-between; gap: 20px; padding: 36px 0 55px; border-top: 1px solid var(--line); color: var(--faint); font-size: .7rem; }
+    .footer p { max-width: 650px; margin-bottom: 0; }
+    .footer code { color: var(--muted); font-family: "SFMono-Regular", Consolas, monospace; }
+
+    @media (max-width: 880px) {
+      .hero, .profiles-wrap, .evidence-grid, .lab-grid { grid-template-columns: 1fr; }
+      .hero { min-height: 0; padding-top: 51px; }
+      .genome-art { min-height: 360px; }
+      .architecture-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .flow { grid-template-columns: 1fr; }
+      .flow-step:not(:last-child)::after { top: auto; right: auto; bottom: -12px; left: 50%; width: 1px; height: 15px; background: linear-gradient(180deg, var(--violet), var(--cyan)); }
+    }
+    @media (max-width: 620px) {
+      .shell { width: min(calc(100% - 28px), var(--max)); }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .nav { justify-content: flex-start; }
+      .hero { padding: 38px 0 47px; }
+      h1 { font-size: clamp(3.1rem, 17vw, 5.1rem); }
+      .architecture-grid, .metrics { grid-template-columns: 1fr 1fr; }
+      .architecture-grid .architecture-card:last-child { grid-column: 1 / -1; }
+      .section { padding: 55px 0; }
+      .section-header { align-items: flex-start; flex-direction: column; gap: 12px; }
+      .parent-grid, .result-grid, .seed-row { grid-template-columns: 1fr; }
+      .footer { flex-direction: column; }
+    }
+    @media (max-width: 410px) {
+      .architecture-grid, .metrics { grid-template-columns: 1fr; }
+      .architecture-grid .architecture-card:last-child { grid-column: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="Alkahest genetics lab home"><span class="brand-mark">A</span> Alkahest / Genetics Lab</a>
+      <nav class="nav" aria-label="Page sections">
+        <a href="#architecture">Architecture</a>
+        <a href="#profiles">Profiles</a>
+        <a href="#evidence">Evidence</a>
+        <a href="#lab">Try a cross</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <span class="eyebrow">A living genome, not a Punnett chart</span>
+          <h1 id="hero-title"><span class="gradient-text">From allele</span><br>to offspring.</h1>
+          <p>Alkahest genetics builds children from chromosomes, meiosis, recombination, sex-linked inheritance, maternal loci, and germline mutation. This page maps the code, the evidence, and one small browser model.</p>
+          <div class="hero-actions">
+            <a class="button-link" href="#lab">Open the breeding lab</a>
+            <a class="ghost-button" href="#evidence">See the test evidence</a>
+          </div>
+          <div class="hero-note"><span class="status-dot" aria-hidden="true"></span> API core verified with 72 deterministic genetics tests</div>
+        </div>
+        <div class="genome-art" aria-label="Decorative diagram showing genome, meiosis, and child genome">
+          <div class="art-label">The shape of a cross</div>
+          <div class="chromosome-stack" aria-hidden="true">
+            <div class="chromosome"><span><strong>Genome</strong><small>sex + loci + allele DNA</small></span><span class="gene-bars"><i></i><i></i><i></i><i></i><i></i></span></div>
+            <div class="chromosome"><span><strong>Meiosis</strong><small>gametes + optional crossing-over</small></span><span class="gene-bars"><i></i><i></i><i></i><i></i><i></i></span></div>
+            <div class="chromosome"><span><strong>Child</strong><small>fertilization + mutation + phenotype</small></span><span class="gene-bars"><i></i><i></i><i></i><i></i><i></i></span></div>
+          </div>
+          <div class="art-footer"><span><strong>DNA is the source of truth.</strong> Traits are decoded after inheritance.</span><span class="art-foot-mark">A·G</span></div>
+        </div>
+      </section>
+
+      <section class="section" id="architecture" aria-labelledby="architecture-title">
+        <div class="section-header">
+          <div><div class="section-kicker">01 / Where it lives</div><h2 id="architecture-title">Three layers.<br>One breeding path.</h2></div>
+          <p>The pure model stays reusable and NMS-free. The server façade attaches genomes to entities. Thin vanilla hooks call into it at the moments Minecraft already understands.</p>
+        </div>
+        <div class="architecture-grid">
+          <article class="card architecture-card api">
+            <div class="card-icon">API</div>
+            <h3>Pure genetics core</h3>
+            <p>Models genomes and loci, chooses gametes, crosses chromosomes, mutates DNA, and decodes phenotypes without Minecraft classes.</p>
+            <code class="path">alkahest-api/src/main/java/dev/mintychochip/genetics/</code>
+          </article>
+          <article class="card architecture-card server">
+            <div class="card-icon">NMS</div>
+            <h3>Server entity bridge</h3>
+            <p>Caches genomes by UUID, persists them as <code>MintyGenome</code>, applies phenotypes, gates mates, and prepares child metadata.</p>
+            <code class="path">paper-server/src/main/java/dev/mintychochip/genetics/</code>
+          </article>
+          <article class="card architecture-card hooks">
+            <div class="card-icon">MC</div>
+            <h3>Vanilla touchpoints</h3>
+            <p>Ageable persistence, world insertion, animal breeding, foxes, villagers, equines, llamas, camels, and wolves call the façade.</p>
+            <code class="path">paper-server/patches/sources/net/minecraft/</code>
+          </article>
+        </div>
+        <div class="flow" aria-label="Genetics data flow">
+          <div class="flow-step"><b>Parent genomes</b><span>sex + loci</span></div>
+          <div class="flow-step"><b>Meiosis</b><span>gametes</span></div>
+          <div class="flow-step"><b>Recombination</b><span>linked phase</span></div>
+          <div class="flow-step"><b>Mutation</b><span>DNA edits</span></div>
+          <div class="flow-step"><b>Phenotype</b><span>traits + variant</span></div>
+        </div>
+      </section>
+
+      <section class="section" id="profiles" aria-labelledby="profiles-title">
+        <div class="section-header">
+          <div><div class="section-kicker">02 / Profile registry</div><h2 id="profiles-title">The catalog has a<br>shape you can inspect.</h2></div>
+          <p>Explicit profiles cover the registered breedable set. Unknown types retain a generic fallback instead of disappearing into an accidental default.</p>
+        </div>
+        <div class="metrics" aria-label="Profile coverage metrics">
+          <div class="metric"><span class="metric-value">28</span><span class="metric-label">explicit profile types</span></div>
+          <div class="metric"><span class="metric-value">10</span><span class="metric-label">variant label families</span></div>
+          <div class="metric"><span class="metric-value">X / Y</span><span class="metric-label">sex chromosomes modeled</span></div>
+          <div class="metric"><span class="metric-value">MT</span><span class="metric-label">maternal inheritance path</span></div>
+        </div>
+        <div class="profiles-wrap">
+          <article class="card profile-summary">
+            <h3>Profile vocabulary</h3>
+            <p>Each badge is an explicit registry entry. Empty profiles preserve a real cross and persistence path even when that species has no custom loci yet.</p>
+            <div class="legend" aria-label="Profile categories">
+              <div class="legend-row"><span class="legend-dot" style="--legend: var(--violet)"></span> Variant profile — one registry-backed variant locus</div>
+              <div class="legend-row"><span class="legend-dot" style="--legend: var(--copper)"></span> Specialized profile — species rules or quantitative traits</div>
+              <div class="legend-row"><span class="legend-dot" style="--legend: var(--cyan)"></span> Empty profile — explicit identity, zero custom loci</div>
+            </div>
+          </article>
+          <div class="card profile-list" aria-label="Registered genetics profiles">
+            <span class="profile-badge variant">Axolotl</span><span class="profile-badge variant">Cat</span><span class="profile-badge variant">Chicken</span><span class="profile-badge variant">Cow</span><span class="profile-badge variant">Mooshroom</span><span class="profile-badge variant">Fox</span><span class="profile-badge variant">Frog</span><span class="profile-badge variant">Pig</span><span class="profile-badge variant">Rabbit</span><span class="profile-badge variant">Wolf</span>
+            <span class="profile-badge special">Sheep</span><span class="profile-badge special">Panda</span><span class="profile-badge special">Horse</span><span class="profile-badge special">Donkey</span><span class="profile-badge special">Mule</span><span class="profile-badge special">Llama</span><span class="profile-badge special">Villager</span>
+            <span class="profile-badge empty">Armadillo</span><span class="profile-badge empty">Bee</span><span class="profile-badge empty">Camel</span><span class="profile-badge empty">Goat</span><span class="profile-badge empty">Hoglin</span><span class="profile-badge empty">Nautilus</span><span class="profile-badge empty">Ocelot</span><span class="profile-badge empty">Sniffer</span><span class="profile-badge empty">Strider</span><span class="profile-badge empty">Turtle</span><span class="profile-badge empty">Happy Ghast</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="evidence" aria-labelledby="evidence-title">
+        <div class="section-header">
+          <div><div class="section-kicker">03 / What is proven</div><h2 id="evidence-title">Contracts have receipts.</h2></div>
+          <p>The API suite checks individual inheritance rules and profile contracts with deterministic seeds. It does not pretend to be a population simulator.</p>
+        </div>
+        <div class="evidence-grid">
+          <article class="card suite-card">
+            <h3>API genetics test suites</h3>
+            <p style="color: var(--muted); font-size: .8rem;">Executed with <code>--rerun-tasks</code>; 0 failures, 0 errors, 0 skipped.</p>
+            <div class="suite-list">
+              <div class="suite-row"><span class="suite-name">BreedableProfilesCoverageTest</span><span class="suite-count">35 passed</span></div>
+              <div class="suite-row"><span class="suite-name">BreedingEngineTest</span><span class="suite-count">9 passed</span></div>
+              <div class="suite-row"><span class="suite-name">PhenotypeVariantResolverTest</span><span class="suite-count">8 passed</span></div>
+              <div class="suite-row"><span class="suite-name">SpecializedBreedableProfilesTest</span><span class="suite-count">7 passed</span></div>
+              <div class="suite-row"><span class="suite-name">DnaSequenceMutationTest</span><span class="suite-count">5 passed</span></div>
+              <div class="suite-row"><span class="suite-name">GenomeCodecTest</span><span class="suite-count">3 passed</span></div>
+              <div class="suite-row"><span class="suite-name">SheepGeneticsProfileTest</span><span class="suite-count">3 passed</span></div>
+              <div class="suite-row"><span class="suite-name">GeneticsProfilesTest</span><span class="suite-count">2 passed</span></div>
+            </div>
+          </article>
+          <div>
+            <article class="card notice-card warning">
+              <span class="notice-label">Server suite status</span>
+              <h3>Integration tests are written, but compile is the gate.</h3>
+              <p><code>AnimalGeneticsTest</code> covers NBT persistence, cache behavior, profile selection, child generation, and cancelled-breed cleanup. The focused server test command currently stops in <code>compileTestJava</code>.</p>
+              <code class="code-line">AnimalGeneticsTest.java:165 — Mockito EntityType&lt;?&gt; mismatch</code>
+            </article>
+            <article class="card notice-card gap">
+              <span class="notice-label">Still to add</span>
+              <h3>Population-level evidence.</h3>
+              <p>No multi-generation Monte Carlo run, statistical distribution assertion, or live-server end-to-end breeding scenario exists yet. The browser lab below is an honest visual model of the individual-cross rules.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section lab-section" id="lab" aria-labelledby="lab-title">
+        <div class="section-header">
+          <div><div class="section-kicker">04 / Browser breeding lab</div><h2 id="lab-title">Make one child.<br>Read the trail.</h2></div>
+          <p>Choose representative parent genomes and a seed. The result is reproducible, inspectable, and intentionally smaller than the production engine.</p>
+        </div>
+        <div class="lab-grid">
+          <article class="card controls-card">
+            <span class="lab-badge">Illustrative browser model</span>
+            <h3>Set the parent genomes</h3>
+            <p>These controls expose the rules that are easiest to see: sex, an X-linked coat marker, and a maternal vigor marker.</p>
+            <div class="parent-grid">
+              <div class="parent-card">
+                <h4>Parent A</h4>
+                <div class="field"><label for="parent-a-sex">Sex</label><select id="parent-a-sex"><option value="FEMALE">Female / XX</option><option value="MALE">Male / XY</option></select></div>
+                <div class="field"><label for="parent-a-coat">Coat allele</label><select id="parent-a-coat"><option value="BLACK">Black / o</option><option value="ORANGE">Orange / O</option></select></div>
+                <div class="field"><label for="parent-a-vigor">Maternal marker</label><select id="parent-a-vigor"><option value="M1">M1</option><option value="M2">M2</option></select></div>
+              </div>
+              <div class="parent-card">
+                <h4>Parent B</h4>
+                <div class="field"><label for="parent-b-sex">Sex</label><select id="parent-b-sex"><option value="MALE">Male / XY</option><option value="FEMALE">Female / XX</option></select></div>
+                <div class="field"><label for="parent-b-coat">Coat allele</label><select id="parent-b-coat"><option value="ORANGE">Orange / O</option><option value="BLACK">Black / o</option></select></div>
+                <div class="field"><label for="parent-b-vigor">Maternal marker</label><select id="parent-b-vigor"><option value="M2">M2</option><option value="M1">M1</option></select></div>
+              </div>
+            </div>
+            <div class="seed-row">
+              <div class="field"><label for="seed">Deterministic seed</label><input id="seed" type="number" value="42" step="1" inputmode="numeric"></div>
+              <div class="field"><label>Mutation mode</label><select aria-label="Mutation mode" disabled><option>Off for clarity</option></select></div>
+            </div>
+            <div class="button-row"><button class="primary-button" id="breed" type="button">Breed parents</button><button class="ghost-button" id="reset" type="button">Reset</button></div>
+            <p class="disclaimer">This sandbox mirrors selected production contracts; it does not execute <code>dev.mintychochip.genetics.engine.BreedingEngine</code> in the browser.</p>
+          </article>
+
+          <article class="card result-card" aria-live="polite">
+            <h3>Child genome report</h3>
+            <p>Every result keeps the seed and event trail visible so you can replay it.</p>
+            <div id="result-status" class="result-status"><strong id="status-title">Ready to breed</strong><span id="status-detail">seed 42</span></div>
+            <div class="result-grid">
+              <div class="result-cell"><label>Child sex</label><strong id="child-sex">—</strong><small id="child-sex-detail">awaiting cross</small></div>
+              <div class="result-cell"><label>Coat phenotype</label><strong id="child-coat">—</strong><small id="child-coat-detail">X-linked locus</small></div>
+              <div class="result-cell"><label>Maternal marker</label><strong id="child-maternal">—</strong><small>dam only</small></div>
+            </div>
+            <div class="allele-strip" id="allele-strip"><span class="allele"><b>genome</b> no child attached</span></div>
+            <div class="log-title">Cross event log</div>
+            <ul class="event-log" id="event-log"><li><strong>Waiting:</strong> choose parents, then press Breed.</li></ul>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Alkahest genetics overview. Source paths and test counts reflect the current repository snapshot; the sandbox is explanatory, not a second implementation.</p>
+      <p><code>dev.mintychochip.genetics</code></p>
+    </footer>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const $ = (selector) => document.querySelector(selector);
+      const controls = {
+        aSex: $("#parent-a-sex"),
+        aCoat: $("#parent-a-coat"),
+        aVigor: $("#parent-a-vigor"),
+        bSex: $("#parent-b-sex"),
+        bCoat: $("#parent-b-coat"),
+        bVigor: $("#parent-b-vigor"),
+        seed: $("#seed")
+      };
+
+      function createRng(seed) {
+        let state = seed >>> 0;
+        return () => {
+          state += 0x6D2B79F5;
+          let value = Math.imul(state ^ (state >>> 15), 1 | state);
+          value ^= value + Math.imul(value ^ (value >>> 7), 61 | value);
+          return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function readSeed() {
+        const value = Number.parseInt(controls.seed.value, 10);
+        return Number.isFinite(value) ? value : 42;
+      }
+
+      function readParents() {
+        return {
+          a: { id: "A", sex: controls.aSex.value, coat: controls.aCoat.value, vigor: controls.aVigor.value },
+          b: { id: "B", sex: controls.bSex.value, coat: controls.bCoat.value, vigor: controls.bVigor.value }
+        };
+      }
+
+      function labelForCoat(coat) {
+        return coat === "ORANGE" ? "Orange / O" : "Black / o";
+      }
+
+      function breed(parents, seed) {
+        if (parents.a.sex === parents.b.sex) {
+          return { ok: false, message: "Same-sex cross rejected by GeneticMatePolicy.", detail: "both parents are " + parents.a.sex.toLowerCase() };
+        }
+
+        const rng = createRng(seed);
+        const mother = parents.a.sex === "FEMALE" ? parents.a : parents.b;
+        const father = parents.a.sex === "MALE" ? parents.a : parents.b;
+        const childSex = rng() < 0.5 ? "MALE" : "FEMALE";
+        const crossover = rng() < 0.18;
+        const maternalMarker = mother.vigor;
+        const coatAlleles = childSex === "MALE"
+          ? [mother.coat]
+          : [father.coat, mother.coat];
+        const hasOrange = coatAlleles.includes("ORANGE");
+        const hasBlack = coatAlleles.includes("BLACK");
+        const coat = childSex === "FEMALE" && hasOrange && hasBlack ? "Calico" : labelForCoat(coatAlleles[0]);
+        const childLabel = childSex === "MALE" ? "Male / XY" : "Female / XX";
+        const events = [
+          "Opposite-sex gate passed.",
+          "" + childLabel + " selected from seed " + seed + ".",
+          "Dam " + mother.id + " supplied the X-linked coat allele to this " + (childSex === "MALE" ? "son" : "daughter") + ".",
+          "Maternal marker copied from dam: " + maternalMarker + ".",
+          crossover ? "Illustrative crossover roll: linked phase would switch here." : "Illustrative crossover roll: parental phase stays together.",
+          "Mutation mode is off in this visual model."
+        ];
+
+        return { ok: true, seed, childSex, childLabel, coat, coatAlleles, maternalMarker, mother, father, crossover, events };
+      }
+
+      function renderRejection(result) {
+        const status = $("#result-status");
+        status.classList.add("rejected");
+        $("#status-title").textContent = "Cross rejected";
+        $("#status-detail").textContent = result.detail;
+        $("#child-sex").textContent = "No child";
+        $("#child-sex-detail").textContent = "mate gate stopped the cross";
+        $("#child-coat").textContent = "—";
+        $("#child-coat-detail").textContent = "no genome attached";
+        $("#child-maternal").textContent = "—";
+        $("#allele-strip").innerHTML = "<span class=\"allele\"><b>policy</b> " + result.message + "</span>";
+        $("#event-log").innerHTML = "<li><strong>Rejected:</strong> " + result.message + "</li>";
+      }
+
+      function renderResult(result) {
+        const status = $("#result-status");
+        status.classList.remove("rejected");
+        $("#status-title").textContent = "Child genome attached";
+        $("#status-detail").textContent = "replay with seed " + result.seed;
+        $("#child-sex").textContent = result.childLabel;
+        $("#child-sex-detail").textContent = result.childSex === "MALE" ? "hemizygous X-linked coat" : "diploid X-linked coat";
+        $("#child-coat").textContent = result.coat;
+        $("#child-coat-detail").textContent = result.coatAlleles.map(labelForCoat).join(" + ");
+        $("#child-maternal").textContent = result.maternalMarker;
+        $("#allele-strip").innerHTML = result.coatAlleles.map((allele, index) => {
+          const source = result.childSex === "MALE" ? "dam" : (index === 0 ? "sire" : "dam");
+          return "<span class=\"allele\"><b>coat</b> " + labelForCoat(allele) + " · " + source + "</span>";
+        }).join("") + "<span class=\"allele\"><b>mt-vigor</b> " + result.maternalMarker + " · dam</span>";
+        $("#event-log").innerHTML = result.events.map((event, index) => "<li><strong>0" + (index + 1) + ":</strong> " + event + "</li>").join("");
+      }
+
+      function runCross() {
+        const result = breed(readParents(), readSeed());
+        if (result.ok) {
+          renderResult(result);
+        } else {
+          renderRejection(result);
+        }
+      }
+
+      function renderReady() {
+        const status = $("#result-status");
+        status.classList.remove("rejected");
+        $("#status-title").textContent = "Ready to breed";
+        $("#status-detail").textContent = "seed 42";
+        $("#child-sex").textContent = "—";
+        $("#child-sex-detail").textContent = "awaiting cross";
+        $("#child-coat").textContent = "—";
+        $("#child-coat-detail").textContent = "X-linked locus";
+        $("#child-maternal").textContent = "—";
+        $("#allele-strip").innerHTML = "<span class=\"allele\"><b>genome</b> no child attached</span>";
+        $("#event-log").innerHTML = "<li><strong>Waiting:</strong> choose parents, then press Breed.</li>";
+      }
+
+      function reset() {
+        controls.aSex.value = "FEMALE";
+        controls.aCoat.value = "BLACK";
+        controls.aVigor.value = "M1";
+        controls.bSex.value = "MALE";
+        controls.bCoat.value = "ORANGE";
+        controls.bVigor.value = "M2";
+        controls.seed.value = "42";
+        renderReady();
+      }
+
+      $("#breed").addEventListener("click", runCross);
+      $("#reset").addEventListener("click", reset);
+      reset();
+    })();
+  </script>
+</body>
+</html>
