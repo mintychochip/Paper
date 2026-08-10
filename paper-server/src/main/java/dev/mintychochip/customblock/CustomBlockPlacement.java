@@ -4,8 +4,10 @@ import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.Ageable;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.MultipleFacing;
+import org.bukkit.block.data.type.Sapling;
 import org.bukkit.block.data.type.Tripwire;
 import org.jetbrains.annotations.NotNull;
 
@@ -36,6 +38,24 @@ public final class CustomBlockPlacement {
     public static @NotNull BlockData carrierData(@NotNull final CustomBlockDefinition definition) {
         final Material material = carrierMaterial(definition);
         final BlockData data = Bukkit.createBlockData(material);
+        if (definition.host() instanceof PlantHostSpec plant) {
+            return switch (plant.kind()) {
+                case CROP -> {
+                    if (!(data instanceof Ageable ageable)) {
+                        throw new IllegalArgumentException("crop plant host requires an ageable carrier");
+                    }
+                    ageable.setAge(0);
+                    yield ageable;
+                }
+                case SAPLING -> {
+                    if (!(data instanceof Sapling sapling)) {
+                        throw new IllegalArgumentException("sapling plant host requires a sapling carrier");
+                    }
+                    sapling.setStage(0);
+                    yield sapling;
+                }
+            };
+        }
 
         // Optional state index is reserved for pack allocation later.
         // For now, use stable default states that look/behave acceptably as carriers.

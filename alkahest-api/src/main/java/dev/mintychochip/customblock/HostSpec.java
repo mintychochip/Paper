@@ -8,7 +8,7 @@ import org.jetbrains.annotations.NotNull;
  * <p>Sealed so each {@link BlockHostType} has exactly one matching spec shape.
  */
 public sealed interface HostSpec
-    permits ChorusHostSpec, MushroomHostSpec, TripwireHostSpec, PacketHostSpec {
+    permits ChorusHostSpec, MushroomHostSpec, TripwireHostSpec, PlantHostSpec, PacketHostSpec {
 
     @NotNull
     BlockHostType type();

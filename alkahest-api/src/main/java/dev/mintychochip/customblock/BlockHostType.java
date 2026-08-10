@@ -27,6 +27,12 @@ public enum BlockHostType {
     TRIPWIRE,
 
     /**
+     * Vanilla crop or sapling carrier with custom plant growth routing.
+     * The carrier remains a real vanilla block while the custom definition owns growth behavior.
+     */
+    PLANT,
+
+    /**
      * Client-only item-display packets plus a fake solid block change (default glass),
      * matching the PacketBlocks approach. Near-unlimited variants; identity stored
      * separately from vanilla block states.

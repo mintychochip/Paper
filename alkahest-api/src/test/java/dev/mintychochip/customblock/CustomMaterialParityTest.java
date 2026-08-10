@@ -70,6 +70,7 @@ public class CustomMaterialParityTest {
         CustomBlocks.register(def);
 
         final Material type = def;
+        assertTrue(type instanceof CustomMaterial);
         assertTrue(type.isCustom());
         assertFalse(type.isVanilla());
         assertEquals("mintychochip:test_ore", type.getKey().toString());

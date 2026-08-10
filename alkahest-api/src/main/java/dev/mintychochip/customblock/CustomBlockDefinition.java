@@ -25,7 +25,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 /**
- * Immutable definition of a custom block type (identity + host + item + feel).
+ * Immutable definition of a custom block type (identity + host + item + feel + behavior).
  *
  * <p>Implements {@link Material} so callers can use the same APIs as vanilla constants
  * (lookups via {@link Material#getByKey}, hardness, stack size, …). Live
@@ -34,8 +34,15 @@ import org.jetbrains.annotations.Unmodifiable;
  *
  * <p>{@link BlockFeel} controls hardness, preferred tool, and blast resistance so the
  * custom block can emulate a vanilla block even when hosted on a different carrier.
+ *
+ * <p>{@link #behavior()} contains immutable receivers for the server placement, interaction,
+ * break, piston, and explosion lifecycle. Receiver contexts are snapshots; the server retains
+ * live Bukkit handles and applies each returned plan after validation.
+ *
+ * <p>{@link #plantBehavior()} is an optional immutable growth receiver for {@link BlockHostType#PLANT}
+ * definitions. Plant contexts are snapshots and custom plant defaults do not inherit carrier growth.
  */
-public final class CustomBlockDefinition implements Material {
+public final class CustomBlockDefinition extends CustomMaterial {
 
     private final NamespacedKey key;
     private final HostSpec host;
@@ -44,6 +51,8 @@ public final class CustomBlockDefinition implements Material {
     private final @Nullable Component displayName;
     private final @Nullable List<Component> itemLore;
     private final BlockFeel feel;
+    private final CustomBlockBehavior behavior;
+    private final CustomPlantBehavior plantBehavior;
 
     private CustomBlockDefinition(
         final NamespacedKey key,
@@ -52,13 +61,17 @@ public final class CustomBlockDefinition implements Material {
         final Key itemModel,
         final @Nullable Component displayName,
         final @Nullable List<Component> itemLore,
-        final BlockFeel feel
+        final BlockFeel feel,
+        final CustomBlockBehavior behavior,
+        final CustomPlantBehavior plantBehavior
     ) {
         this.key = Objects.requireNonNull(key, "key");
         this.host = Objects.requireNonNull(host, "host");
         this.itemMaterial = Objects.requireNonNull(itemMaterial, "itemMaterial");
         this.itemModel = Objects.requireNonNull(itemModel, "itemModel");
         this.feel = Objects.requireNonNull(feel, "feel");
+        this.behavior = Objects.requireNonNull(behavior, "behavior");
+        this.plantBehavior = Objects.requireNonNull(plantBehavior, "plantBehavior");
         if (itemMaterial.isCustom()) {
             throw new IllegalArgumentException("itemMaterial must be vanilla Material, not custom");
         }
@@ -134,6 +147,15 @@ public final class CustomBlockDefinition implements Material {
         return this.feel;
     }
 
+    /** Immutable behavior receivers owned by this definition. */
+    public @NotNull CustomBlockBehavior behavior() {
+        return this.behavior;
+    }
+    /** Immutable plant growth receiver owned by this definition. */
+    public @NotNull CustomPlantBehavior plantBehavior() {
+        return this.plantBehavior;
+    }
+
     public boolean isBaked() {
         return this.host.type().isBaked();
     }
@@ -160,6 +182,7 @@ public final class CustomBlockDefinition implements Material {
                     : org.bukkit.VanillaMaterial.BROWN_MUSHROOM_BLOCK;
             }
             case TRIPWIRE -> org.bukkit.VanillaMaterial.TRIPWIRE;
+            case PLANT -> ((PlantHostSpec) this.host).carrier();
             case PACKET -> packetCollisionMaterial();
         };
     }
@@ -485,6 +508,8 @@ public final class CustomBlockDefinition implements Material {
         private @Nullable Component displayName;
         private @Nullable List<Component> itemLore;
         private BlockFeel feel = BlockFeel.DEFAULT;
+        private CustomBlockBehavior behavior = CustomBlockBehavior.defaults();
+        private CustomPlantBehavior plantBehavior = CustomPlantBehavior.defaults();
 
         private Builder(final NamespacedKey key) {
             this.key = Objects.requireNonNull(key, "key");
@@ -532,6 +557,15 @@ public final class CustomBlockDefinition implements Material {
             return this;
         }
 
+        public Builder behavior(final CustomBlockBehavior behavior) {
+            this.behavior = Objects.requireNonNull(behavior, "behavior");
+            return this;
+        }
+        public Builder plantBehavior(final CustomPlantBehavior plantBehavior) {
+            this.plantBehavior = Objects.requireNonNull(plantBehavior, "plantBehavior");
+            return this;
+        }
+
         /** Shorthand for {@code feel(BlockFeel.emulate(material))}. */
         public Builder emulate(final Material blockMaterial) {
             this.feel = BlockFeel.emulate(blockMaterial);
@@ -552,7 +586,9 @@ public final class CustomBlockDefinition implements Material {
                 this.itemModel,
                 this.displayName,
                 this.itemLore,
-                this.feel
+                this.feel,
+                this.behavior,
+                this.plantBehavior
             );
         }
     }
