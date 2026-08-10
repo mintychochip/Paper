@@ -134,3 +134,81 @@ The retained test XMLs contain 24 suites, 170 tests, 0 failures, 0 errors, and 0
 ## Concerns
 
 `compileTestJava` and the exact retained-test command cannot be green until Task 3 deletes or adapts its explicitly owned `CatalogStaticRegistryTest.java`. Native API production compilation and all retained focused tests are green when that known Task 3 boundary is excluded. This is reported as `DONE_WITH_CONCERNS` rather than silently changing a Task 3 file.
+
+
+## Follow-up correction: Task 3 catalog-test boundary
+
+Focused fix commit SHA: `62a0905af` (`fix(api): remove stale catalog registry test`)
+
+Changed path:
+
+- Deleted `alkahest-api/src/test/java/dev/mintychochip/registry/CatalogStaticRegistryTest.java`
+
+The deletion is the only tracked source change in this follow-up. The existing untracked `.superpowers/sdd/progress.md`, `review-task-2.diff`, and task brief files were not staged or modified.
+
+Exact required API compilation command and output (exit code 0):
+
+```text
+./gradlew :alkahest-api:compileJava :alkahest-api:compileTestJava
+```
+
+```text
+Calculating task graph as configuration cache cannot be reused because init script '../../../../../../tmp/task2-exclude-catalog-test.gradle' has been removed.
+
+> Configure project :paper-server
+paperweight-core v2.0.0-beta.21 (running on 'Linux')
+
+> Task :alkahest-api:processResources NO-SOURCE
+> Task :alkahest-api:compileJava UP-TO-DATE
+> Task :alkahest-api:classes UP-TO-DATE
+> Task :alkahest-api:compileTestJava UP-TO-DATE
+
+BUILD SUCCESSFUL in 817ms
+2 actionable tasks: 2 up-to-date
+Configuration cache entry stored.
+```
+
+Exact retained focused API test command and output (exit code 0):
+
+```text
+./gradlew :alkahest-api:test --tests 'dev.mintychochip.customblock.*' --tests 'dev.mintychochip.genetics.*' --tests 'dev.mintychochip.ecology.*' --tests 'dev.mintychochip.season.*'
+```
+
+```text
+Calculating task graph as configuration cache cannot be reused because init script '../../../../../../tmp/task2-exclude-catalog-test.gradle' has been removed.
+
+> Configure project :paper-server
+paperweight-core v2.0.0-beta.21 (running on 'Linux')
+
+> Task :alkahest-api:processResources NO-SOURCE
+> Task :alkahest-api:processTestResources UP-TO-DATE
+> Task :alkahest-api:compileJava UP-TO-DATE
+> Task :alkahest-api:classes UP-TO-DATE
+> Task :alkahest-api:compileTestJava UP-TO-DATE
+> Task :alkahest-api:testClasses UP-TO-DATE
+> Task :alkahest-api:test UP-TO-DATE
+
+BUILD SUCCESSFUL in 493ms
+4 actionable tasks: 4 up-to-date
+Configuration cache entry stored.
+```
+
+Protected-path diff inspection before commit:
+
+```text
+ D alkahest-api/src/test/java/dev/mintychochip/registry/CatalogStaticRegistryTest.java
+?? .superpowers/sdd/progress.md
+?? .superpowers/sdd/review-task-2.diff
+?? .superpowers/sdd/task-2-brief.md
+?? .superpowers/sdd/task-3-brief.md
+?? .superpowers/sdd/task-4-brief.md
+?? .superpowers/sdd/task-5-brief.md
+--- tracked diff names ---
+D	alkahest-api/src/test/java/dev/mintychochip/registry/CatalogStaticRegistryTest.java
+--- protected paths ---
+--- target deletion diff stat ---
+ .../registry/CatalogStaticRegistryTest.java        | 63 ----------------------
+ 1 file changed, 63 deletions(-)
+```
+
+Outcome: `DONE_WITH_CONCERNS`. Both requested API compilation and retained focused tests pass after deleting the explicitly Task 3-owned stale catalog test. Gradle emitted a non-failing configuration-cache notice referencing the removed `/tmp/task2-exclude-catalog-test.gradle` init script; no repository files or build outputs were changed by that notice.
