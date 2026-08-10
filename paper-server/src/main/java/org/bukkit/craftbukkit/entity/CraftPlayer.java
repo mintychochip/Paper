@@ -2689,24 +2689,6 @@ public class CraftPlayer extends CraftHumanEntity implements Player, PluginMessa
 
     @Override
     public <T> void spawnParticle(Particle particle, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, double extra, T data, boolean force) {
-        if (dev.mintychochip.particle.CustomParticleRouter.emitIfCustom(
-            particle,
-            this.getWorld(),
-            java.util.List.of(this),
-            null,
-            x,
-            y,
-            z,
-            count,
-            offsetX,
-            offsetY,
-            offsetZ,
-            extra,
-            data,
-            force
-        )) {
-            return;
-        }
         ClientboundLevelParticlesPacket packet = new ClientboundLevelParticlesPacket(CraftParticle.createParticleParam(particle, data), force, false, x, y, z, (float) offsetX, (float) offsetY, (float) offsetZ, (float) extra, count); // Paper - fix x/y/z precision loss
         this.getHandle().connection.send(packet);
     }
