@@ -4,6 +4,12 @@ import dev.mintychochip.genetics.dto.PhenotypeSnapshot;
 import dev.mintychochip.genetics.dto.PhenotypeVariantResolver;
 import dev.mintychochip.genetics.model.Genome;
 import dev.mintychochip.genetics.profile.VariantLabelSets;
+import org.bukkit.attribute.Attributable;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.entity.Horse;
+import org.bukkit.entity.Llama;
+import org.bukkit.entity.Panda;
 import java.util.Locale;
 import java.util.Optional;
 import net.minecraft.world.entity.AgeableMob;
@@ -86,6 +92,9 @@ public final class PhenotypeApplier {
             return false;
         }
 
+        if (applySpecial(bukkit, type, phenotype)) {
+            return true;
+        }
         final String traitKey = variantTraitKey(type);
         if (traitKey != null) {
             final String label = phenotype.getOrNull(traitKey);
@@ -97,6 +106,124 @@ public final class PhenotypeApplier {
         // Legacy generic coat decoding remains available for old NBT/genomes.
         final Optional<NamespacedKey> legacyKey = PhenotypeVariantResolver.resolve(type, phenotype);
         return legacyKey.isPresent() && applyVariantKey(bukkit, type, legacyKey.get());
+    }
+
+    private static boolean applySpecial(
+        final Entity bukkit,
+        final EntityType type,
+        final PhenotypeSnapshot phenotype
+    ) {
+        if (type == EntityType.HORSE || type == EntityType.DONKEY || type == EntityType.MULE) {
+            return applyEquine(bukkit, phenotype);
+        }
+        if (type == EntityType.LLAMA) {
+            return applyLlama(bukkit, phenotype);
+        }
+        if (type == EntityType.PANDA) {
+            return applyPanda(bukkit, phenotype);
+        }
+        return false;
+    }
+
+    private static boolean applyEquine(final Entity bukkit, final PhenotypeSnapshot phenotype) {
+        boolean changed = false;
+        if (bukkit instanceof Attributable attributable) {
+            changed |= applyAttribute(attributable, Attribute.MOVEMENT_SPEED, phenotype.getOrNull("equine.speed"));
+            changed |= applyAttribute(attributable, Attribute.JUMP_STRENGTH, phenotype.getOrNull("equine.jump"));
+            changed |= applyAttribute(attributable, Attribute.MAX_HEALTH, phenotype.getOrNull("equine.health"));
+        }
+        if (bukkit instanceof Horse horse) {
+            final String color = phenotype.getOrNull("equine.color");
+            if (color != null) {
+                try {
+                    horse.setColor(Horse.Color.valueOf(color));
+                    changed = true;
+                } catch (final IllegalArgumentException ignored) {
+                }
+            }
+            final String markings = phenotype.getOrNull("equine.markings");
+            if (markings != null) {
+                try {
+                    horse.setStyle(Horse.Style.valueOf(
+                        "WHITE_FIELD".equals(markings) ? "WHITEFIELD" : markings
+                    ));
+                    changed = true;
+                } catch (final IllegalArgumentException ignored) {
+                }
+            }
+        }
+        return changed;
+    }
+
+    private static boolean applyAttribute(
+        final Attributable attributable,
+        final Attribute attribute,
+        final @Nullable String label
+    ) {
+        if (label == null) {
+            return false;
+        }
+        try {
+            final AttributeInstance instance = attributable.getAttribute(attribute);
+            if (instance == null) {
+                return false;
+            }
+            instance.setBaseValue(Double.parseDouble(label));
+            return true;
+        } catch (final RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private static boolean applyLlama(final Entity bukkit, final PhenotypeSnapshot phenotype) {
+        if (!(bukkit instanceof Llama llama)) {
+            return false;
+        }
+        boolean changed = false;
+        final String color = phenotype.getOrNull("llama.color");
+        if (color != null) {
+            try {
+                llama.setColor(Llama.Color.valueOf(color));
+                changed = true;
+            } catch (final IllegalArgumentException ignored) {
+            }
+        }
+        final String strength = phenotype.getOrNull("llama.strength");
+        if (strength != null) {
+            try {
+                final int value = Integer.parseInt(strength);
+                if (value >= 1 && value <= 5) {
+                    llama.setStrength(value);
+                    changed = true;
+                }
+            } catch (final RuntimeException ignored) {
+            }
+        }
+        return changed;
+    }
+
+    private static boolean applyPanda(final Entity bukkit, final PhenotypeSnapshot phenotype) {
+        if (!(bukkit instanceof Panda panda)) {
+            return false;
+        }
+        boolean changed = false;
+        final String main = phenotype.getOrNull("panda.main");
+        if (main != null) {
+            try {
+                panda.setMainGene(Panda.Gene.valueOf(main));
+                changed = true;
+            } catch (final IllegalArgumentException ignored) {
+            }
+        }
+        final String hidden = phenotype.getOrNull("panda.hidden");
+        if (hidden != null) {
+            try {
+                panda.setHiddenGene(Panda.Gene.valueOf(hidden));
+                changed = true;
+            } catch (final IllegalArgumentException ignored) {
+            }
+        }
+        return changed;
     }
 
     private static @Nullable String variantTraitKey(final EntityType type) {

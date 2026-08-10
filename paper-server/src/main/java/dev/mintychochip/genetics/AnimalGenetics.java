@@ -311,36 +311,38 @@ public final class AnimalGenetics {
         if (!enabled || offspring == null) {
             return null;
         }
-        final GeneticsProfile parentProfile = profile(parentA);
-        final GeneticsProfile partnerProfile = profile(parentB);
-        if (!parentProfile.id().equals(partnerProfile.id())) {
+        final EntityType parentType = CraftEntityType.minecraftToBukkit(parentA.getType());
+        final EntityType partnerType = CraftEntityType.minecraftToBukkit(parentB.getType());
+        final EntityType childType = CraftEntityType.minecraftToBukkit(offspring.getType());
+        final Optional<BreedPlan> plan = GeneticsProfiles.resolveBreed(parentType, partnerType, childType);
+        if (plan.isEmpty()) {
             return null;
         }
+        final BreedPlan breedPlan = plan.orElseThrow();
         final Genome ga = getOrCreate(parentA, parentA.getRandom());
         final Genome gb = getOrCreate(parentB, parentB.getRandom());
-        final Optional<BreedingResult> result = crossWithProfile(
-            parentProfile,
+        final Optional<Genome> childResult = breedPlan.familyProfile().breed(
             ga,
             gb,
-            asGenerator(parentA.getRandom())
+            asGenerator(parentA.getRandom()),
+            BreedContext.of(parentType, partnerType, childType)
         );
-        if (result.isEmpty()) {
+        if (childResult.isEmpty()) {
             return null;
         }
-        final Genome child = result.get().child();
-        CACHE.put(offspring.getUUID(), new CacheEntry(parentProfile.id(), child));
+        final Genome child = childResult.orElseThrow();
+        CACHE.put(offspring.getUUID(), new CacheEntry(breedPlan.childProfile().id(), child));
 
         final Animal mother = ga.sex() == Sex.FEMALE ? parentA : parentB;
         final Animal father = ga.sex() == Sex.MALE ? parentA : parentB;
         final Genome motherGenome = mother == parentA ? ga : gb;
         final Genome fatherGenome = father == parentA ? ga : gb;
 
-        final EntityType childType = CraftEntityType.minecraftToBukkit(offspring.getType());
         return new BreedPrep(
             mother,
             father,
             child,
-            snapshotsOf(motherGenome, fatherGenome, child, childType, parentProfile)
+            snapshotsOf(motherGenome, fatherGenome, child, childType, breedPlan.childProfile())
         );
     }
     /**

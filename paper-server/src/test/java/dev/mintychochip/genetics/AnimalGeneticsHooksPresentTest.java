@@ -71,6 +71,23 @@ public class AnimalGeneticsHooksPresentTest {
         assertTrue(ageable.contains("onRemoval"), "cache cleanup must be tied to the common removal lifecycle");
     }
 
+    @Test
+    public void specialBreedResolutionAndAdaptersArePresent() throws Exception {
+        final String genetics = readProjectFile(
+            "src/main/java/dev/mintychochip/genetics/AnimalGenetics.java",
+            "paper-server/src/main/java/dev/mintychochip/genetics/AnimalGenetics.java"
+        );
+        final String applier = readProjectFile(
+            "src/main/java/dev/mintychochip/genetics/PhenotypeApplier.java",
+            "paper-server/src/main/java/dev/mintychochip/genetics/PhenotypeApplier.java"
+        );
+        assertTrue(genetics.contains("familyProfile().breed("), "Animal breeding must delegate to the resolved family profile");
+        assertTrue(genetics.contains("childProfile().id()"), "child cache must use the resolved child profile");
+        assertTrue(applier.contains("\"equine.speed\""), "equine numeric adapter must be present");
+        assertTrue(applier.contains("\"llama.strength\""), "llama strength adapter must be present");
+        assertTrue(applier.contains("\"panda.hidden\""), "panda hidden-gene adapter must be present");
+    }
+
     private static String readProjectFile(final String... relativeCandidates) throws Exception {
         Path cwd = Path.of("").toAbsolutePath();
         for (int i = 0; i < 6; i++) {
