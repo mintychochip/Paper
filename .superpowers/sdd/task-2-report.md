@@ -2,7 +2,7 @@
 
 ## Status
 
-Commit SHA: `f1f727b5d` (amended after writing this report)
+Commit SHA: `6502685f4` (Task 2 implementation commit; this report correction is a follow-up commit)
 
 The native Particle, PotionType, and MemoryKey API surfaces were restored from the required historical sources while retaining the current upstream constants/generated values. The catalog-only native packages, classes, and tests listed in the brief were removed. `CatalogStaticRegistryTest.java` was restored byte-for-byte to `HEAD`; Task 3 owns its subsequent deletion/update. `NativeApiContractTest.java` is retained because it asserts observable enum/final-class and native lookup behavior.
 
