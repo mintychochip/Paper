@@ -88,6 +88,9 @@ public final class AnimalGenetics {
     public static GeneticsProfile profile(final Animal animal) {
         return profileFor(CraftEntityType.minecraftToBukkit(animal.getType()));
     }
+    public static GeneticsProfile profile(final AgeableMob ageable) {
+        return profileFor(CraftEntityType.minecraftToBukkit(ageable.getType()));
+    }
 
     // ------------------------------------------------------------------
     // Persistence (entity NBT + in-memory cache)
@@ -101,12 +104,30 @@ public final class AnimalGenetics {
         }
     }
 
+    public static void save(final AgeableMob ageable, final ValueOutput output) {
+        final CacheEntry entry = CACHE.get(ageable.getUUID());
+        if (entry != null) {
+            output.putString(NBT_KEY, GenomeCodec.encode(entry.genome()));
+            output.putString(PROFILE_NBT_KEY, entry.profileId());
+        }
+    }
     public static void load(final Animal animal, final ValueInput input) {
         input.getString(NBT_KEY).ifPresent(encoded -> {
             try {
                 final Genome genome = GenomeCodec.decode(encoded);
                 final String profileId = input.getString(PROFILE_NBT_KEY).orElse(GENERIC_PROFILE.id());
                 CACHE.put(animal.getUUID(), new CacheEntry(profileId, genome));
+            } catch (final RuntimeException ignored) {
+                // Corrupt data: regenerate on next world insertion.
+            }
+        });
+    }
+    public static void load(final AgeableMob ageable, final ValueInput input) {
+        input.getString(NBT_KEY).ifPresent(encoded -> {
+            try {
+                final Genome genome = GenomeCodec.decode(encoded);
+                final String profileId = input.getString(PROFILE_NBT_KEY).orElse(GENERIC_PROFILE.id());
+                CACHE.put(ageable.getUUID(), new CacheEntry(profileId, genome));
             } catch (final RuntimeException ignored) {
                 // Corrupt data: regenerate on next world insertion.
             }
@@ -122,6 +143,21 @@ public final class AnimalGenetics {
         final GeneticsProfile profile = profile(animal);
         final CacheEntry entry = ensureEntry(animal, profile, asGenerator(animal.getRandom()), false);
         PhenotypeApplier.apply(animal, profile.phenotype(entry.genome()));
+    }
+    public static void onAddedToWorld(final AgeableMob ageable) {
+        final GeneticsProfile resolved = profile(ageable);
+        final CacheEntry entry = ensureEntry(ageable, resolved, asGenerator(ageable.getRandom()), false);
+        PhenotypeApplier.apply(ageable, resolved.phenotype(entry.genome()));
+    }
+
+    public static void setGenome(final AgeableMob ageable, final Genome genome) {
+        final GeneticsProfile resolved = profile(ageable);
+        CACHE.put(ageable.getUUID(), new CacheEntry(resolved.id(), genome));
+        PhenotypeApplier.apply(ageable, resolved.phenotype(genome));
+    }
+
+    public static @Nullable Genome getGenome(final AgeableMob ageable) {
+        return getGenome(ageable.getUUID());
     }
 
     public static void remove(final Entity entity) {
@@ -165,6 +201,15 @@ public final class AnimalGenetics {
         return profile(animal).phenotype(genome);
     }
 
+    public static PhenotypeSnapshot phenotypeOf(final AgeableMob ageable, final Genome genome) {
+        return profile(ageable).phenotype(genome);
+    }
+
+    public static PhenotypeSnapshot phenotypeOf(final AgeableMob ageable) {
+        final GeneticsProfile resolved = profile(ageable);
+        final CacheEntry entry = ensureEntry(ageable, resolved, asGenerator(ageable.getRandom()), false);
+        return resolved.phenotype(entry.genome());
+    }
     public static PhenotypeSnapshot phenotypeOf(final Animal animal) {
         final GeneticsProfile profile = profile(animal);
         final CacheEntry entry = ensureEntry(animal, profile, asGenerator(animal.getRandom()), false);
@@ -176,19 +221,23 @@ public final class AnimalGenetics {
         return ensureEntry(animal, profile, asGenerator(random), true).genome();
     }
 
+    public static Genome getOrCreate(final AgeableMob ageable, final RandomSource random) {
+        final GeneticsProfile resolved = profile(ageable);
+        return ensureEntry(ageable, resolved, asGenerator(random), true).genome();
+    }
     private static CacheEntry ensureEntry(
-        final Animal animal,
+        final AgeableMob ageable,
         final GeneticsProfile profile,
         final RandomGenerator random,
         final boolean apply
     ) {
-        final UUID entityId = animal.getUUID();
+        final UUID entityId = ageable.getUUID();
         final CacheEntry existing = CACHE.get(entityId);
         if (existing != null && existing.profileId().equals(profile.id())) {
             try {
                 final PhenotypeSnapshot phenotype = profile.phenotype(existing.genome());
                 if (apply) {
-                    PhenotypeApplier.apply(animal, phenotype);
+                    PhenotypeApplier.apply(ageable, phenotype);
                 }
                 return existing;
             } catch (final RuntimeException ignored) {
@@ -197,10 +246,17 @@ public final class AnimalGenetics {
         }
 
         final Sex sex = random.nextBoolean() ? Sex.MALE : Sex.FEMALE;
-        final CacheEntry created = new CacheEntry(profile.id(), profile.founder(sex, random));
+        Genome genome;
+        try {
+            genome = FounderCaptures.capture(ageable, profile, sex, random);
+            profile.phenotype(genome);
+        } catch (final RuntimeException ignored) {
+            genome = profile.founder(sex, random);
+        }
+        final CacheEntry created = new CacheEntry(profile.id(), genome);
         CACHE.put(entityId, created);
         if (apply) {
-            PhenotypeApplier.apply(animal, profile.phenotype(created.genome()));
+            PhenotypeApplier.apply(ageable, profile.phenotype(created.genome()));
         }
         return created;
     }

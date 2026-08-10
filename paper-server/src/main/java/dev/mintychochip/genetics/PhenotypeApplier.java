@@ -49,6 +49,10 @@ public final class PhenotypeApplier {
         final PhenotypeSnapshot phenotype = AnimalGenetics.phenotypeOf(animal, genome);
         return apply(animal, phenotype);
     }
+    public static boolean apply(final AgeableMob ageable, final Genome genome) {
+        final PhenotypeSnapshot phenotype = AnimalGenetics.phenotypeOf(ageable, genome);
+        return apply(ageable, phenotype);
+    }
 
     /**
      * Apply a pre-decoded phenotype to any ageable NMS mob.

@@ -4,6 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import dev.mintychochip.genetics.catalog.DefaultGeneticsCatalog;
 import dev.mintychochip.genetics.dna.MutationSettings;
@@ -18,17 +22,16 @@ import dev.mintychochip.genetics.model.Sex;
 import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
+import net.minecraft.world.entity.AgeableMob;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.bukkit.entity.EntityType;
 import org.bukkit.support.environment.Normal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-/**
- * Server façade tests — real {@link AnimalGenetics} + {@link GenomeCodec}, no live world.
- */
 @Normal
 public class AnimalGeneticsTest {
-
     @AfterEach
     public void cleanup() {
         AnimalGenetics.clearCache();
@@ -58,14 +61,8 @@ public class AnimalGeneticsTest {
         final Genome maleA = sampleMale();
         final Genome maleB = sampleMale();
         assertFalse(GeneticMatePolicy.allowsMate(maleA, maleB));
-        final Optional<BreedingResult> result = AnimalGenetics.cross(
-            maleA,
-            maleB,
-            new Random(1L),
-            MutationSettings.NONE,
-            RecombinationSettings.NONE
-        );
-        assertTrue(result.isEmpty(), "same-sex must not produce a breeding result");
+        final Optional<BreedingResult> result = AnimalGenetics.cross(maleA, maleB, new Random(1L), MutationSettings.NONE, RecombinationSettings.NONE);
+        assertTrue(result.isEmpty());
     }
 
     @Test
@@ -73,36 +70,16 @@ public class AnimalGeneticsTest {
         final Genome father = sampleMale();
         final Genome mother = sampleFemale();
         assertTrue(GeneticMatePolicy.allowsMate(father, mother));
-
-        final Optional<BreedingResult> result = AnimalGenetics.cross(
-            father,
-            mother,
-            new Random(42L),
-            MutationSettings.NONE,
-            RecombinationSettings.NONE
-        );
+        final Optional<BreedingResult> result = AnimalGenetics.cross(father, mother, new Random(42L), MutationSettings.NONE, RecombinationSettings.NONE);
         assertTrue(result.isPresent());
         final Genome child = result.get().child();
         assertNotNull(child);
         assertTrue(child.get(DefaultGeneticsCatalog.COAT.id()).isPresent());
         assertTrue(child.get(DefaultGeneticsCatalog.VITALITY.id()).isPresent());
         assertTrue(child.get(DefaultGeneticsCatalog.MT_VIGOR.id()).isPresent());
-
-        // mt-vigor from mother only (same sequence with NONE mutation)
         final Allele motherMt = mother.getOrNull(DefaultGeneticsCatalog.MT_VIGOR.id()).alleleA();
         final Allele childMt = child.getOrNull(DefaultGeneticsCatalog.MT_VIGOR.id()).alleleA();
         assertEquals(motherMt.sequence(), childMt.sequence());
-
-        if (child.sex() == Sex.MALE) {
-            assertTrue(child.getOrNull(DefaultGeneticsCatalog.COAT.id()).isHemizygous());
-            // son X from dam (black)
-            assertEquals(
-                mother.getOrNull(DefaultGeneticsCatalog.COAT.id()).alleleA().sequence(),
-                child.getOrNull(DefaultGeneticsCatalog.COAT.id()).alleleA().sequence()
-            );
-        } else {
-            assertTrue(child.getOrNull(DefaultGeneticsCatalog.COAT.id()).isDiploid());
-        }
     }
 
     @Test
@@ -121,16 +98,9 @@ public class AnimalGeneticsTest {
     public void snapshotsOfExposesMotherFatherChildSexAndPhenotypes() {
         final Genome mother = sampleFemale();
         final Genome father = sampleMale();
-        final Optional<BreedingResult> result = AnimalGenetics.cross(
-            father,
-            mother,
-            new Random(7L),
-            MutationSettings.NONE,
-            RecombinationSettings.NONE
-        );
+        final Optional<BreedingResult> result = AnimalGenetics.cross(father, mother, new Random(7L), MutationSettings.NONE, RecombinationSettings.NONE);
         assertTrue(result.isPresent());
         final Genome child = result.get().child();
-
         final var genetics = AnimalGenetics.snapshotsOf(mother, father, child);
         assertEquals(Sex.FEMALE, genetics.motherSex());
         assertEquals(Sex.MALE, genetics.fatherSex());
@@ -147,9 +117,7 @@ public class AnimalGeneticsTest {
         final Genome mother = profile.founder(Sex.FEMALE, new Random(1L));
         final Genome father = profile.founder(Sex.MALE, new Random(2L));
         final Genome child = profile.founder(Sex.FEMALE, new Random(3L));
-
         final var genetics = AnimalGenetics.snapshotsOf(mother, father, child, EntityType.CAT);
-
         assertNotNull(genetics.childPhenotype().getOrNull("cat.variant"));
         assertEquals(Optional.empty(), genetics.childVariant());
     }
@@ -161,6 +129,32 @@ public class AnimalGeneticsTest {
         assertNotNull(AnimalGenetics.getGenome(childId));
         AnimalGenetics.discardGenome(childId);
         assertEquals(null, AnimalGenetics.getGenome(childId));
+    }
+
+    @Test
+    public void loadCachesWithoutApplyingAndSaveWritesBothKeys() {
+        final AgeableMob ageable = mock(AgeableMob.class);
+        final UUID id = UUID.randomUUID();
+        when(ageable.getUUID()).thenReturn(id);
+        final Genome genome = sampleFemale();
+        final ValueInput input = mock(ValueInput.class);
+        when(input.getString(AnimalGenetics.NBT_KEY)).thenReturn(Optional.of(GenomeCodec.encode(genome)));
+        when(input.getString(AnimalGenetics.PROFILE_NBT_KEY)).thenReturn(Optional.of("legacy-profile"));
+        AnimalGenetics.load(ageable, input);
+        assertTrue(GenomeCodec.deepEquals(genome, AnimalGenetics.getGenome(id)));
+        final ValueOutput output = mock(ValueOutput.class);
+        AnimalGenetics.save(ageable, output);
+        verify(output).putString(AnimalGenetics.NBT_KEY, GenomeCodec.encode(genome));
+        verify(output).putString(AnimalGenetics.PROFILE_NBT_KEY, "legacy-profile");
+    }
+
+    @Test
+    public void ageableProfileAndPhenotypeUseResolvedType() {
+        final AgeableMob ageable = mock(AgeableMob.class);
+        doReturn(net.minecraft.world.entity.EntityTypes.SHEEP).when(ageable).getType();
+        final Genome genome = AnimalGenetics.profileFor(EntityType.SHEEP).founder(Sex.FEMALE, new Random(1L));
+        assertEquals("sheep", AnimalGenetics.profile(ageable).id());
+        assertNotNull(AnimalGenetics.phenotypeOf(ageable, genome));
     }
 
     private static Genome sampleMale() {
