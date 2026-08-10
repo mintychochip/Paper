@@ -74,7 +74,7 @@ class FounderCaptureTest {
 
     @ParameterizedTest
     @EnumSource(DyeColor.class)
-    void everySheepDyeColorCapturesExactly(final DyeColor color) {
+    void everySheepDyeColorCapturesValidGenotypeLabels(final DyeColor color) {
         final Sheep sheep = mock(Sheep.class);
         doReturn(EntityTypes.SHEEP).when(sheep).getType();
         when(sheep.getColor()).thenReturn(color);
@@ -83,6 +83,26 @@ class FounderCaptureTest {
             sheep, SheepGeneticsProfile.INSTANCE, Sex.FEMALE, new Random(1L)
         );
 
+        final GeneCopy base = genome.get(SheepGeneticsProfile.BASE.id()).orElseThrow();
+        final String baseLabel = switch (color) {
+            case GRAY -> "BLACK";
+            case LIGHT_GRAY -> "BROWN";
+            case PINK -> "RED";
+            case ORANGE -> "YELLOW";
+            default -> color.name();
+        };
+        assertEquals(baseLabel, base.alleleA().label());
+        assertEquals(baseLabel, base.alleleB().label());
+        final String dilution = switch (color) {
+            case GRAY, LIGHT_GRAY, PINK, ORANGE -> "DILUTE";
+            default -> "FULL";
+        };
+        final GeneCopy dilutionCopy = genome.get(SheepGeneticsProfile.DILUTION.id()).orElseThrow();
+        assertEquals(dilution, dilutionCopy.alleleA().label());
+        assertEquals(dilution, dilutionCopy.alleleB().label());
+        final GeneCopy albinism = genome.get(SheepGeneticsProfile.ALBINISM.id()).orElseThrow();
+        assertEquals("PIGMENTED", albinism.alleleA().label());
+        assertEquals("PIGMENTED", albinism.alleleB().label());
         assertEquals(color.name(), SheepGeneticsProfile.INSTANCE.phenotype(genome)
             .getOrNull(SheepGeneticsProfile.COLOR_KEY));
     }
