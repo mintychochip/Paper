@@ -34,12 +34,14 @@ public final class SheepGeneticsProfile implements GeneticsProfile {
         DominanceMode.COMPLETE
     );
     public static final String COLOR_KEY = "sheep.color";
-    static final List<String> BASE_ORDER = List.of(
+    public static final List<String> BASE_ORDER = List.of(
         "BLACK", "BROWN", "RED", "YELLOW",
         "WHITE", "ORANGE", "MAGENTA", "LIGHT_BLUE",
         "LIME", "PINK", "GRAY", "LIGHT_GRAY",
         "CYAN", "PURPLE", "BLUE", "GREEN"
     );
+    public static final List<String> DILUTION_LABELS = List.of("FULL", "DILUTE");
+    public static final List<String> ALBINISM_LABELS = List.of("PIGMENTED", "ALBINO");
 
     public static final SheepGeneticsProfile INSTANCE = new SheepGeneticsProfile();
 
