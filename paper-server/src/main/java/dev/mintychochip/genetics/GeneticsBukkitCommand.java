@@ -8,7 +8,6 @@ import static net.kyori.adventure.text.format.NamedTextColor.GRAY;
 import static net.kyori.adventure.text.format.NamedTextColor.GREEN;
 import static net.kyori.adventure.text.format.NamedTextColor.RED;
 import static net.kyori.adventure.text.format.NamedTextColor.WHITE;
-import dev.mintychochip.genetics.profile.GeneticsProfiles;
 import static net.kyori.adventure.text.format.NamedTextColor.YELLOW;
 import static net.kyori.adventure.text.format.TextDecoration.BOLD;
 
@@ -16,6 +15,7 @@ import dev.mintychochip.genetics.model.Allele;
 import dev.mintychochip.genetics.model.GeneCopy;
 import dev.mintychochip.genetics.model.LocusDefinition;
 import dev.mintychochip.genetics.profile.GeneticsProfile;
+import dev.mintychochip.genetics.profile.GeneticsProfiles;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -25,6 +25,7 @@ import java.util.Optional;
 import net.kyori.adventure.text.Component;
 import net.minecraft.world.entity.AgeableMob;
 import org.bukkit.Bukkit;
+import org.bukkit.NamespacedKey;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.craftbukkit.entity.CraftEntity;
@@ -243,7 +244,7 @@ public final class GeneticsBukkitCommand extends Command {
         }
         final String typeName = args[0].toLowerCase(Locale.ROOT).startsWith("minecraft:")
             ? args[0].substring("minecraft:".length()) : args[0];
-        final EntityType type = EntityType.fromName(typeName);
+        final EntityType type = EntityType.getByKey(NamespacedKey.minecraft(typeName)).orElse(null);
         if (type == null && !typeName.equals("generic")) {
             sender.sendMessage(text("Unknown entity type: ", RED).append(text(args[0], YELLOW)));
             return;
