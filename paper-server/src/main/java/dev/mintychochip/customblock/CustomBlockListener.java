@@ -1,6 +1,8 @@
 package dev.mintychochip.customblock;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -12,6 +14,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockPistonEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
@@ -26,32 +29,42 @@ import org.jetbrains.annotations.NotNull;
  */
 public final class CustomBlockListener implements Listener {
 
-    /** Break event → definition for MONITOR drop (thread: main only). */
-    private final Map<Location, CustomBlockDefinition> pendingBreakDrops = new HashMap<>();
+    /** Break event → immutable definition/behavior plan for MONITOR application (main thread). */
+    private final Map<Location, CustomBlockLifecycle.BreakPreparation> pendingBreakDrops = new HashMap<>();
+    /** Piston plans captured before vanilla movement. */
+    private final Map<BlockPistonEvent, List<CustomBlockLifecycle.MovementPreparation>> pendingPistonMoves =
+        new IdentityHashMap<>();
+    /** Block-explosion plans captured before the event finalizes its block list. */
+    private final Map<BlockExplodeEvent, List<CustomBlockLifecycle.ExplosionPreparation>> pendingBlockExplosions =
+        new IdentityHashMap<>();
+    /** Entity-explosion plans captured before the event finalizes its block list. */
+    private final Map<EntityExplodeEvent, List<CustomBlockLifecycle.ExplosionPreparation>> pendingEntityExplosions =
+        new IdentityHashMap<>();
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPlace(final BlockPlaceEvent event) {
         CustomBlockLifecycle.handlePlace(event);
     }
 
     /**
-     * Place custom-block items whose base material is not a block (e.g. PAPER host item).
+     * Route custom-block interaction and manual placement without replacing Bukkit events.
      */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onInteractPlace(final PlayerInteractEvent event) {
-        if (event.getClickedBlock() == null || event.getItem() == null) {
+        if (event.getClickedBlock() == null) {
+            return;
+        }
+        if (CustomBlockLifecycle.handleInteract(event)) {
+            return;
+        }
+        if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        if (event.getItem() == null) {
             return;
         }
         if (event.getHand() != EquipmentSlot.HAND && event.getHand() != EquipmentSlot.OFF_HAND) {
             return;
-        }
-        switch (event.getAction()) {
-            case RIGHT_CLICK_BLOCK -> {
-                // fall through
-            }
-            default -> {
-                return;
-            }
         }
         final ItemStack item = event.getItem();
         if (!CustomBlocks.isCustomBlockItem(item)) {
@@ -79,16 +92,24 @@ public final class CustomBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBreakPrepare(final BlockBreakEvent event) {
-        final Optional<CustomBlockDefinition> def = CustomBlockLifecycle.prepareBreak(event);
-        if (def.isPresent()) {
-            this.pendingBreakDrops.put(blockKey(event.getBlock()), def.get());
-        }
+        final Optional<CustomBlockLifecycle.BreakPreparation> preparation =
+            CustomBlockLifecycle.prepareBreakWithBehavior(event);
+        preparation.ifPresent(value -> this.pendingBreakDrops.put(blockKey(event.getBlock()), value));
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBreakFinish(final BlockBreakEvent event) {
-        final CustomBlockDefinition def = this.pendingBreakDrops.remove(blockKey(event.getBlock()));
-        CustomBlockLifecycle.finishBreak(event, def);
+        final CustomBlockLifecycle.BreakPreparation preparation =
+            this.pendingBreakDrops.remove(blockKey(event.getBlock()));
+        if (preparation == null) {
+            CustomBlockLifecycle.finishBreak(event, null);
+        } else {
+            CustomBlockLifecycle.finishBreak(
+                event,
+                preparation.definition(),
+                preparation.plan()
+            );
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
@@ -100,45 +121,134 @@ public final class CustomBlockListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPistonExtend(final BlockPistonExtendEvent event) {
-        if (containsCustom(event.getBlocks())) {
-            event.setCancelled(true);
-        }
+        preparePiston(event, event.getBlocks());
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onPistonRetract(final BlockPistonRetractEvent event) {
-        if (containsCustom(event.getBlocks())) {
-            event.setCancelled(true);
+        preparePiston(event, event.getBlocks());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onPistonExtendFinish(final BlockPistonExtendEvent event) {
+        finishPiston(event);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onPistonRetractFinish(final BlockPistonRetractEvent event) {
+        finishPiston(event);
+    }
+
+    private void finishPiston(final BlockPistonEvent event) {
+        final List<CustomBlockLifecycle.MovementPreparation> preparations =
+            this.pendingPistonMoves.remove(event);
+        if (preparations == null || event.isCancelled()) {
+            return;
+        }
+        for (final CustomBlockLifecycle.MovementPreparation preparation : preparations) {
+            CustomBlockLifecycle.finishMove(preparation);
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockExplode(final BlockExplodeEvent event) {
-        clearExploded(event.blockList());
+        final List<CustomBlockLifecycle.ExplosionPreparation> preparations = new ArrayList<>();
+        routeExplosion(
+            event.blockList(),
+            CustomBlockLifecycle.position(event.getBlock()),
+            false,
+            preparations
+        );
+        if (!preparations.isEmpty()) {
+            this.pendingBlockExplosions.put(event, preparations);
+        }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onBlockExplodeFinish(final BlockExplodeEvent event) {
+        finishExplosion(event, this.pendingBlockExplosions.remove(event));
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEntityExplode(final EntityExplodeEvent event) {
-        clearExploded(event.blockList());
+        final List<CustomBlockLifecycle.ExplosionPreparation> preparations = new ArrayList<>();
+        routeExplosion(
+            event.blockList(),
+            CustomBlockLifecycle.position(event.getLocation()),
+            true,
+            preparations
+        );
+        if (!preparations.isEmpty()) {
+            this.pendingEntityExplosions.put(event, preparations);
+        }
     }
 
-    private static boolean containsCustom(final List<Block> blocks) {
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onEntityExplodeFinish(final EntityExplodeEvent event) {
+        finishExplosion(event, this.pendingEntityExplosions.remove(event));
+    }
+
+    private void preparePiston(final BlockPistonEvent event, final List<Block> blocks) {
+        final List<CustomBlockLifecycle.MovementPreparation> preparations = new ArrayList<>();
         for (final Block block : blocks) {
-            if (CustomBlockLifecycle.isCustom(block)) {
-                return true;
+            final Optional<CustomBlockLifecycle.MovementPreparation> preparation =
+                CustomBlockLifecycle.prepareMove(block, event.getDirection());
+            if (preparation.isEmpty()) {
+                continue;
+            }
+            final CustomBlockLifecycle.MovementPreparation value = preparation.get();
+            if (value.plan().decision() != dev.mintychochip.behavior.Decision.ALLOW) {
+                event.setCancelled(true);
+                return;
+            }
+            preparations.add(value);
+        }
+        if (!preparations.isEmpty()) {
+            this.pendingPistonMoves.put(event, preparations);
+        }
+    }
+
+    private static void routeExplosion(
+        final List<Block> blocks,
+        final dev.mintychochip.behavior.Position source,
+        final boolean entitySource,
+        final List<CustomBlockLifecycle.ExplosionPreparation> preparations
+    ) {
+        for (final Block block : List.copyOf(blocks)) {
+            final Optional<CustomBlockLifecycle.ExplosionPreparation> preparation =
+                CustomBlockLifecycle.prepareExplosion(block, source, entitySource);
+            if (preparation.isEmpty()) {
+                continue;
+            }
+            final CustomBlockLifecycle.ExplosionPreparation value = preparation.get();
+            if (value.plan().decision() == dev.mintychochip.behavior.Decision.DENY) {
+                blocks.remove(block);
+            } else {
+                preparations.add(value);
             }
         }
-        return false;
     }
 
-    private static void clearExploded(final List<Block> blocks) {
-        final CustomBlockLookup lookup = CustomBlocks.lookup();
-        final var displays = dev.mintychochip.customblock.display.PacketDisplayService.get();
-        for (final Block block : blocks) {
-            displays.despawn(block);
-            lookup.clearAt(block);
-            // mintychochip - item provenance: explode no-drop must not leave placement orphans
-            CustomBlockProvenance.clearPlacement(block);
+    private static void finishExplosion(
+        final Object event,
+        final List<CustomBlockLifecycle.ExplosionPreparation> preparations
+    ) {
+        if (preparations == null) {
+            return;
+        }
+        final List<Block> blocks = event instanceof BlockExplodeEvent blockEvent
+            ? blockEvent.blockList()
+            : ((EntityExplodeEvent) event).blockList();
+        final boolean cancelled = event instanceof BlockExplodeEvent blockEvent
+            ? blockEvent.isCancelled()
+            : ((EntityExplodeEvent) event).isCancelled();
+        if (cancelled) {
+            return;
+        }
+        for (final CustomBlockLifecycle.ExplosionPreparation preparation : preparations) {
+            if (blocks.contains(preparation.block())) {
+                CustomBlockLifecycle.finishExplosion(preparation);
+            }
         }
     }
 
