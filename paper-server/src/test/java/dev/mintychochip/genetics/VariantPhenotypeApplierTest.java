@@ -17,6 +17,7 @@ import org.bukkit.entity.Fox;
 import org.bukkit.entity.MushroomCow;
 import org.bukkit.entity.Rabbit;
 import org.bukkit.entity.Sheep;
+import org.bukkit.entity.Villager;
 import org.bukkit.entity.Cat;
 import dev.mintychochip.genetics.dto.PhenotypeSnapshot;
 import dev.mintychochip.genetics.dto.PhenotypeTrait;
@@ -41,6 +42,8 @@ class VariantPhenotypeApplierTest {
             assertTrue(source.contains("\"" + species + ".variant\""), species + " variant trait branch must exist");
         }
         assertTrue(source.contains("\"sheep.color\""), "sheep color branch must remain");
+        assertTrue(source.contains("\"villager.type\""), "villager type trait branch must exist");
+        assertTrue(source.contains("setVillagerType("), "villager type setter branch must exist");
         assertTrue(source.contains("setVariant("), "variant setter branches must exist");
         assertTrue(source.contains("setCatType("), "cat setter branch must exist");
         assertTrue(source.contains("setFoxType("), "fox setter branch must exist");
@@ -57,6 +60,19 @@ class VariantPhenotypeApplierTest {
 
         assertFalse(PhenotypeApplier.apply(axolotl, EntityType.AXOLOTL, snapshot("axolotl.variant", "NOT_A_VARIANT")));
     }
+    @Test
+    void villagerTypeLabelAppliesAndUnknownLabelIsRejected() {
+        final Villager villager = mock(Villager.class);
+
+        assertTrue(PhenotypeApplier.apply(villager, EntityType.VILLAGER, snapshot("villager.type", "PLAINS")));
+        verify(villager).setVillagerType(Villager.Type.PLAINS);
+
+        assertFalse(PhenotypeApplier.apply(
+            villager, EntityType.VILLAGER, snapshot("villager.type", "NOT_A_TYPE")
+        ));
+        assertFalse(PhenotypeApplier.apply(villager, EntityType.VILLAGER, new PhenotypeSnapshot(List.of())));
+    }
+
 
     @Test
     void enumBackedVariantSettersApplyCanonicalLabels() {

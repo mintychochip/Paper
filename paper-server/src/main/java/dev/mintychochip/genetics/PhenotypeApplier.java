@@ -24,6 +24,7 @@ import org.bukkit.entity.MushroomCow;
 import org.bukkit.entity.Pig;
 import org.bukkit.entity.Rabbit;
 import org.bukkit.entity.Sheep;
+import org.bukkit.entity.Villager;
 import org.bukkit.entity.Wolf;
 import io.papermc.paper.registry.RegistryAccess;
 import io.papermc.paper.registry.RegistryKey;
@@ -132,6 +133,9 @@ public final class PhenotypeApplier {
         if (type == EntityType.WOLF) {
             return "wolf.variant";
         }
+        if (type == EntityType.VILLAGER) {
+            return "villager.type";
+        }
         return null;
     }
 
@@ -169,9 +173,26 @@ public final class PhenotypeApplier {
         if (type == EntityType.WOLF) {
             return applyWolfLabel(bukkit, label);
         }
+        if (type == EntityType.VILLAGER) {
+            return applyVillagerLabel(bukkit, label);
+        }
         return false;
     }
 
+
+    private static boolean applyVillagerLabel(final Entity bukkit, final @Nullable String label) {
+        if (!(bukkit instanceof Villager villager) || label == null) {
+            return false;
+        }
+        return safelyApplyRegistry(() -> {
+            final Villager.Type type = registry(RegistryKey.VILLAGER_TYPE).get(minecraftLabel(label));
+            if (type == null) {
+                return false;
+            }
+            villager.setVillagerType(type);
+            return true;
+        });
+    }
 
     private static boolean applySheepLabel(final Entity bukkit, final @Nullable String label) {
         if (!(bukkit instanceof Sheep sheep) || label == null) {
