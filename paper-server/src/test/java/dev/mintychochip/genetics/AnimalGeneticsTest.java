@@ -113,7 +113,8 @@ public class AnimalGeneticsTest {
     @Test
     public void sheepProfileIsSelectedByEntityType() {
         assertEquals("sheep", AnimalGenetics.profileFor(EntityType.SHEEP).id());
-        assertEquals("generic", AnimalGenetics.profileFor(EntityType.COW).id());
+        assertEquals("cow", AnimalGenetics.profileFor(EntityType.COW).id());
+        assertEquals("generic", AnimalGenetics.profileFor(EntityType.POLAR_BEAR).id());
     }
 
     @Test
@@ -141,19 +142,16 @@ public class AnimalGeneticsTest {
     }
 
     @Test
-    public void snapshotsOfResolvesCatChildVariantFromCoatPhenotype() {
-        final Genome mother = Genome.builder(Sex.FEMALE)
-            .put(DefaultGeneticsCatalog.COAT, GeneCopy.diploid(
-                Allele.of("ATGAAACCC", "O"),
-                Allele.of("ATGCCCGGG", "o")
-            ))
-            .put(DefaultGeneticsCatalog.VITALITY, GeneCopy.diploid(Allele.of("ATGGGGGGG"), Allele.of("ATGGGGGGG")))
-            .put(DefaultGeneticsCatalog.MT_VIGOR, GeneCopy.diploid(Allele.of("ATGTTTTTT"), Allele.of("ATGTTTTTT")))
-            .build();
-        final Genome father = sampleMale();
-        // Force female child path isn't controlled here; resolve against mother phenotype as stand-in for calico female.
-        final var genetics = AnimalGenetics.snapshotsOf(mother, father, mother, org.bukkit.entity.EntityType.CAT);
-        assertEquals(Optional.of(org.bukkit.NamespacedKey.minecraft("calico")), genetics.childVariant());
+    public void snapshotsOfDecodesExplicitCatVariantBeforeAdapterResolution() {
+        final var profile = AnimalGenetics.profileFor(EntityType.CAT);
+        final Genome mother = profile.founder(Sex.FEMALE, new Random(1L));
+        final Genome father = profile.founder(Sex.MALE, new Random(2L));
+        final Genome child = profile.founder(Sex.FEMALE, new Random(3L));
+
+        final var genetics = AnimalGenetics.snapshotsOf(mother, father, child, EntityType.CAT);
+
+        assertNotNull(genetics.childPhenotype().getOrNull("cat.variant"));
+        assertEquals(Optional.empty(), genetics.childVariant());
     }
 
     @Test
