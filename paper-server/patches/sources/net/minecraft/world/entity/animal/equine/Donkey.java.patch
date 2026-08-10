@@ -1,0 +1,13 @@
+--- a/net/minecraft/world/entity/animal/equine/Donkey.java
++++ b/net/minecraft/world/entity/animal/equine/Donkey.java
+@@ -44,7 +_,9 @@
+ 
+     @Override
+     public boolean canMate(final Animal partner) {
+-        return partner != this && (partner instanceof Donkey || partner instanceof Horse) && this.canParent() && ((AbstractHorse)partner).canParent();
++        return partner != this && (partner instanceof Donkey || partner instanceof Horse)
++            && this.canParent() && ((AbstractHorse)partner).canParent()
++            && dev.mintychochip.genetics.AnimalGenetics.allowsMate(this, partner);
+     }
+ 
+     @Override

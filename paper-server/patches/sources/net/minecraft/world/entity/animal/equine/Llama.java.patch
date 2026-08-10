@@ -37,12 +37,19 @@
              itemUsed = true;
          }
  
-@@ -308,7 +_,7 @@
+@@ -308,12 +_,13 @@
  
      @Override
      public int getMaxTemper() {
 -        return 30;
 +        return super.getMaxTemper(); // Paper - Missing entity API; delegate to parent
+     }
+ 
+     @Override
+     public boolean canMate(final Animal partner) {
+-        return partner != this && partner instanceof Llama llama && this.canParent() && llama.canParent();
++        return partner != this && partner instanceof Llama llama && this.canParent() && llama.canParent()
++            && dev.mintychochip.genetics.AnimalGenetics.allowsMate(this, partner);
      }
  
      @Override

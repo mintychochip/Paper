@@ -6,6 +6,7 @@ import dev.mintychochip.genetics.model.Genome;
 import dev.mintychochip.genetics.model.LocusDefinition;
 import dev.mintychochip.genetics.model.Sex;
 import dev.mintychochip.genetics.profile.GeneticsProfile;
+import dev.mintychochip.genetics.profile.EquineGeneticsProfile;
 import dev.mintychochip.genetics.profile.SheepGeneticsProfile;
 import dev.mintychochip.genetics.profile.LlamaGeneticsProfile;
 import dev.mintychochip.genetics.profile.PandaGeneticsProfile;
@@ -59,7 +60,9 @@ public final class FounderCaptures {
         final Map<EntityType, FounderCapture> map = new HashMap<>();
         map.put(EntityType.AXOLOTL, FounderCaptures::captureAxolotl);
         map.put(EntityType.SHEEP, FounderCaptures::captureSheep);
-        map.put(EntityType.HORSE, FounderCaptures::captureHorse);
+        map.put(EntityType.HORSE, FounderCaptures::captureEquine);
+        map.put(EntityType.DONKEY, FounderCaptures::captureEquine);
+        map.put(EntityType.MULE, FounderCaptures::captureEquine);
         map.put(EntityType.PANDA, FounderCaptures::capturePanda);
         map.put(EntityType.LLAMA, FounderCaptures::captureLlama);
         map.put(EntityType.VILLAGER, FounderCaptures::captureVillager);
@@ -110,21 +113,40 @@ public final class FounderCaptures {
         return fromLabels(profile, sex, labels);
     }
 
-    private static Genome captureHorse(final AgeableMob entity, final GeneticsProfile profile,
-                                       final Sex sex, final RandomGenerator random) {
-        if (!(entity instanceof Horse horse)
-            || horse.getAttribute(Attributes.MOVEMENT_SPEED) == null
-            || horse.getAttribute(Attributes.JUMP_STRENGTH) == null
-            || horse.getAttribute(Attributes.MAX_HEALTH) == null) {
+    private static Genome captureEquine(final AgeableMob entity, final GeneticsProfile profile,
+                                        final Sex sex, final RandomGenerator random) {
+        final net.minecraft.world.entity.ai.attributes.AttributeInstance speed =
+            entity.getAttribute(Attributes.MOVEMENT_SPEED);
+        final net.minecraft.world.entity.ai.attributes.AttributeInstance jump =
+            entity.getAttribute(Attributes.JUMP_STRENGTH);
+        final net.minecraft.world.entity.ai.attributes.AttributeInstance health =
+            entity.getAttribute(Attributes.MAX_HEALTH);
+        if (speed == null || jump == null || health == null) {
             return profile.founder(sex, random);
         }
-        final Map<String, String> labels = new HashMap<>();
-        labels.put("equine.color", horse.getVariant().name());
-        labels.put("equine.markings", horse.getMarkings().name());
-        labels.put("equine.speed", Double.toString(horse.getAttribute(Attributes.MOVEMENT_SPEED).getValue()));
-        labels.put("equine.jump", Double.toString(horse.getAttribute(Attributes.JUMP_STRENGTH).getValue()));
-        labels.put("equine.health", Double.toString(horse.getAttribute(Attributes.MAX_HEALTH).getValue()));
-        return fromLabels(profile, sex, labels);
+        final double speedValue = speed.getValue();
+        final double jumpValue = jump.getValue();
+        final double healthValue = health.getValue();
+        if (!validRange(speedValue, EquineGeneticsProfile.MIN_SPEED, EquineGeneticsProfile.MAX_SPEED)
+            || !validRange(jumpValue, EquineGeneticsProfile.MIN_JUMP, EquineGeneticsProfile.MAX_JUMP)
+            || !validRange(healthValue, EquineGeneticsProfile.MIN_HEALTH, EquineGeneticsProfile.MAX_HEALTH)) {
+            return profile.founder(sex, random);
+        }
+        final String color = entity instanceof Horse horse
+            ? horse.getVariant().name() : EquineGeneticsProfile.COLORS.get(0);
+        final String markings = entity instanceof Horse horse
+            ? horse.getMarkings().name() : EquineGeneticsProfile.MARKING_LABELS.get(0);
+        return fromLabels(profile, sex, Map.of(
+            EquineGeneticsProfile.COLOR.id().key(), color,
+            EquineGeneticsProfile.MARKINGS.id().key(), markings,
+            EquineGeneticsProfile.SPEED.id().key(), Double.toString(speedValue),
+            EquineGeneticsProfile.JUMP.id().key(), Double.toString(jumpValue),
+            EquineGeneticsProfile.HEALTH.id().key(), Double.toString(healthValue)
+        ));
+    }
+
+    private static boolean validRange(final double value, final double min, final double max) {
+        return Double.isFinite(value) && value >= min && value <= max;
     }
 
     private static Genome captureVariant(final AgeableMob entity, final GeneticsProfile profile,

@@ -3,6 +3,7 @@ package dev.mintychochip.genetics;
 import dev.mintychochip.genetics.dto.PhenotypeSnapshot;
 import dev.mintychochip.genetics.dto.PhenotypeVariantResolver;
 import dev.mintychochip.genetics.model.Genome;
+import dev.mintychochip.genetics.profile.EquineGeneticsProfile;
 import dev.mintychochip.genetics.profile.VariantLabelSets;
 import org.bukkit.attribute.Attributable;
 import org.bukkit.attribute.Attribute;
@@ -128,9 +129,12 @@ public final class PhenotypeApplier {
     private static boolean applyEquine(final Entity bukkit, final PhenotypeSnapshot phenotype) {
         boolean changed = false;
         if (bukkit instanceof Attributable attributable) {
-            changed |= applyAttribute(attributable, Attribute.MOVEMENT_SPEED, phenotype.getOrNull("equine.speed"));
-            changed |= applyAttribute(attributable, Attribute.JUMP_STRENGTH, phenotype.getOrNull("equine.jump"));
-            changed |= applyAttribute(attributable, Attribute.MAX_HEALTH, phenotype.getOrNull("equine.health"));
+            changed |= applyAttribute(attributable, Attribute.MOVEMENT_SPEED, phenotype.getOrNull("equine.speed"),
+                EquineGeneticsProfile.MIN_SPEED, EquineGeneticsProfile.MAX_SPEED);
+            changed |= applyAttribute(attributable, Attribute.JUMP_STRENGTH, phenotype.getOrNull("equine.jump"),
+                EquineGeneticsProfile.MIN_JUMP, EquineGeneticsProfile.MAX_JUMP);
+            changed |= applyAttribute(attributable, Attribute.MAX_HEALTH, phenotype.getOrNull("equine.health"),
+                EquineGeneticsProfile.MIN_HEALTH, EquineGeneticsProfile.MAX_HEALTH);
         }
         if (bukkit instanceof Horse horse) {
             final String color = phenotype.getOrNull("equine.color");
@@ -158,17 +162,23 @@ public final class PhenotypeApplier {
     private static boolean applyAttribute(
         final Attributable attributable,
         final Attribute attribute,
-        final @Nullable String label
+        final @Nullable String label,
+        final double min,
+        final double max
     ) {
         if (label == null) {
             return false;
         }
         try {
+            final double value = Double.parseDouble(label);
+            if (!Double.isFinite(value) || value < min || value > max) {
+                return false;
+            }
             final AttributeInstance instance = attributable.getAttribute(attribute);
             if (instance == null) {
                 return false;
             }
-            instance.setBaseValue(Double.parseDouble(label));
+            instance.setBaseValue(value);
             return true;
         } catch (final RuntimeException ignored) {
             return false;

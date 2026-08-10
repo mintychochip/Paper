@@ -173,9 +173,9 @@ public final class EquineGeneticsProfile implements GeneticsProfile {
         final GeneCopy copy = genome.get(locus.id()).orElseThrow(() ->
             new IllegalArgumentException("Missing equine numeric locus: " + locus.id()));
         try {
-            return Double.parseDouble(copy.alleleA().label());
+            return validatedNumeric(locus, Double.parseDouble(copy.alleleA().label()));
         } catch (RuntimeException ex) {
-            throw new IllegalArgumentException("Equine numeric allele must be a number: " + locus.id(), ex);
+            throw new IllegalArgumentException("Equine numeric allele must be a finite in-range number: " + locus.id(), ex);
         }
     }
 
@@ -186,7 +186,21 @@ public final class EquineGeneticsProfile implements GeneticsProfile {
         if (label == null || label.isBlank()) {
             throw new IllegalArgumentException("Equine alleles require semantic labels: " + locus.id());
         }
+        if (isNumeric(locus)) {
+            try {
+                validatedNumeric(locus, Double.parseDouble(label));
+            } catch (RuntimeException ex) {
+                throw new IllegalArgumentException("Equine numeric allele must be a finite in-range number: " + locus.id(), ex);
+            }
+        }
         return new PhenotypeTrait(locus.phenotypeKey(), label);
+    }
+
+    private static double validatedNumeric(final LocusDefinition locus, final double value) {
+        if (!Double.isFinite(value) || value < min(locus) || value > max(locus)) {
+            throw new IllegalArgumentException("Equine numeric allele is outside its valid range: " + locus.id());
+        }
+        return value;
     }
 
     private static Allele founderAllele(final LocusDefinition locus, final RandomGenerator random) {

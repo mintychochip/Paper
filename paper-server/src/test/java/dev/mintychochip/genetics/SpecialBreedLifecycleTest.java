@@ -1,5 +1,6 @@
 package dev.mintychochip.genetics;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -21,6 +22,9 @@ import java.util.Random;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.animal.equine.Donkey;
+import net.minecraft.world.entity.animal.equine.Mule;
 import org.bukkit.attribute.Attributable;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -162,6 +166,95 @@ public class SpecialBreedLifecycleTest {
             new PhenotypeTrait("panda.main", "INVALID"),
             new PhenotypeTrait("panda.hidden", "INVALID")
         )));
+    }
+
+    @Test
+    public void donkeyAndMuleFounderCapturePreservesNumericAttributes() {
+        final Donkey donkey = mock(Donkey.class);
+        doReturn(EntityTypes.DONKEY).when(donkey).getType();
+        final Genome donkeyGenome = captureEquineNumeric(donkey, EquineGeneticsProfile.DONKEY);
+        assertEquals("0.2", donkeyGenome.getOrNull(EquineGeneticsProfile.SPEED.id()).alleleA().label());
+        assertEquals("0.8", donkeyGenome.getOrNull(EquineGeneticsProfile.JUMP.id()).alleleA().label());
+        assertEquals("24.0", donkeyGenome.getOrNull(EquineGeneticsProfile.HEALTH.id()).alleleA().label());
+
+        final Mule mule = mock(Mule.class);
+        doReturn(EntityTypes.MULE).when(mule).getType();
+        final Genome muleGenome = captureEquineNumeric(mule, EquineGeneticsProfile.MULE);
+        assertEquals("0.2", muleGenome.getOrNull(EquineGeneticsProfile.SPEED.id()).alleleA().label());
+        assertEquals("0.8", muleGenome.getOrNull(EquineGeneticsProfile.JUMP.id()).alleleA().label());
+        assertEquals("24.0", muleGenome.getOrNull(EquineGeneticsProfile.HEALTH.id()).alleleA().label());
+    }
+
+    @Test
+    public void equinePhenotypeRejectsNonFiniteAndOutOfRangeNumericLabels() {
+        for (final String label : new String[] {"NaN", "Infinity", "-Infinity", "0.01", "0.5"}) {
+            final Genome genome = equineGenome(EquineGeneticsProfile.SPEED, label);
+            assertThrows(IllegalArgumentException.class,
+                () -> EquineGeneticsProfile.HORSE.phenotype(genome), label);
+        }
+        assertThrows(IllegalArgumentException.class,
+            () -> EquineGeneticsProfile.HORSE.phenotype(equineGenome(
+                EquineGeneticsProfile.JUMP, "1.1")));
+        assertThrows(IllegalArgumentException.class,
+            () -> EquineGeneticsProfile.HORSE.phenotype(equineGenome(
+                EquineGeneticsProfile.HEALTH, "31.0")));
+    }
+
+    @Test
+    public void equineApplierRejectsInvalidNumericLabelsWithoutMutatingAttributes() {
+        final CraftEntity facade = Mockito.mock(
+            CraftEntity.class, Mockito.withSettings().extraInterfaces(Horse.class, Attributable.class));
+        final Attributable attributable = (Attributable) facade;
+        final AttributeInstance speed = mock(AttributeInstance.class);
+        final AttributeInstance jump = mock(AttributeInstance.class);
+        final AttributeInstance health = mock(AttributeInstance.class);
+        when(attributable.getAttribute(Attribute.MOVEMENT_SPEED)).thenReturn(speed);
+        when(attributable.getAttribute(Attribute.JUMP_STRENGTH)).thenReturn(jump);
+        when(attributable.getAttribute(Attribute.MAX_HEALTH)).thenReturn(health);
+
+        assertFalse(PhenotypeApplier.apply(facade, EntityType.HORSE, snapshot(
+            new PhenotypeTrait("equine.speed", "NaN"),
+            new PhenotypeTrait("equine.jump", "1.1"),
+            new PhenotypeTrait("equine.health", "31.0")
+        )));
+        Mockito.verifyNoInteractions(speed, jump, health);
+    }
+
+    private static Genome captureEquineNumeric(
+        final AgeableMob entity,
+        final dev.mintychochip.genetics.profile.EquineGeneticsProfile profile
+    ) {
+        final net.minecraft.world.entity.ai.attributes.AttributeInstance speed =
+            mock(net.minecraft.world.entity.ai.attributes.AttributeInstance.class);
+        final net.minecraft.world.entity.ai.attributes.AttributeInstance jump =
+            mock(net.minecraft.world.entity.ai.attributes.AttributeInstance.class);
+        final net.minecraft.world.entity.ai.attributes.AttributeInstance health =
+            mock(net.minecraft.world.entity.ai.attributes.AttributeInstance.class);
+        when(speed.getValue()).thenReturn(0.2D);
+        when(jump.getValue()).thenReturn(0.8D);
+        when(health.getValue()).thenReturn(24.0D);
+        when(entity.getAttribute(Attributes.MOVEMENT_SPEED)).thenReturn(speed);
+        when(entity.getAttribute(Attributes.JUMP_STRENGTH)).thenReturn(jump);
+        when(entity.getAttribute(Attributes.MAX_HEALTH)).thenReturn(health);
+        return FounderCaptures.capture(entity, profile, Sex.FEMALE, new Random(1L));
+    }
+
+    private static Genome equineGenome(
+        final dev.mintychochip.genetics.model.LocusDefinition replaced,
+        final String label
+    ) {
+        final Genome.Builder genome = Genome.builder(Sex.FEMALE);
+        for (final var locus : EquineGeneticsProfile.CATALOG.all()) {
+            final String value = locus == replaced
+                ? label
+                : locus == EquineGeneticsProfile.COLOR ? "WHITE"
+                : locus == EquineGeneticsProfile.MARKINGS ? "NONE"
+                : locus == EquineGeneticsProfile.SPEED ? "0.2"
+                : locus == EquineGeneticsProfile.JUMP ? "0.8" : "24.0";
+            final var allele = dev.mintychochip.genetics.model.Allele.of("ATGAAACCC", value);
+            genome.put(locus, dev.mintychochip.genetics.model.GeneCopy.diploid(allele, allele));
+        }
+        return genome.build();
     }
 
     @Test

@@ -87,6 +87,31 @@ public class AnimalGeneticsHooksPresentTest {
         assertTrue(applier.contains("\"llama.strength\""), "llama strength adapter must be present");
         assertTrue(applier.contains("\"panda.hidden\""), "panda hidden-gene adapter must be present");
     }
+    @Test
+    public void specialBreedOverridesRetainGeneticsMateGate() throws Exception {
+        for (final String source : new String[] {
+            "src/minecraft/java/net/minecraft/world/entity/animal/equine/Horse.java",
+            "src/minecraft/java/net/minecraft/world/entity/animal/equine/Llama.java",
+            "src/minecraft/java/net/minecraft/world/entity/animal/equine/Donkey.java",
+            "src/minecraft/java/net/minecraft/world/entity/animal/camel/Camel.java"
+        }) {
+            final String content = readProjectFile(source,
+                "paper-server/" + source);
+            assertTrue(content.contains("AnimalGenetics.allowsMate"),
+                source + " must retain the genetics mate gate");
+        }
+    }
+
+    @Test
+    public void foxBreedOverrideRetainsGeneticsLifecycle() throws Exception {
+        final String source = readProjectFile(
+            "src/minecraft/java/net/minecraft/world/entity/animal/fox/Fox.java",
+            "paper-server/src/minecraft/java/net/minecraft/world/entity/animal/fox/Fox.java"
+        );
+        assertTrue(source.contains("AnimalGenetics.prepareBreed"), "fox breed must prepare genetics");
+        assertTrue(source.contains("AnimalGenetics.discardBreed"), "fox cancellation must discard genetics");
+        assertTrue(source.contains("breedGenetics"), "fox EntityBreedEvent must receive genetics metadata");
+    }
 
     private static String readProjectFile(final String... relativeCandidates) throws Exception {
         Path cwd = Path.of("").toAbsolutePath();

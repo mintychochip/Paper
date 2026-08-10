@@ -15,6 +15,16 @@
          }
  
          boolean couldAgeUp = this.canAgeUp();
+@@ -474,7 +_,8 @@
+ 
+     @Override
+     public boolean canMate(final Animal partner) {
+-        return partner != this && partner instanceof Camel camel && this.canParent() && camel.canParent();
++        return partner != this && partner instanceof Camel camel && this.canParent() && camel.canParent()
++            && dev.mintychochip.genetics.AnimalGenetics.allowsMate(this, partner);
+     }
+ 
+     @Override
 @@ -488,9 +_,13 @@
      }
  
