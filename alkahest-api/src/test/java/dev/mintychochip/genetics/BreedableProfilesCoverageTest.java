@@ -18,6 +18,7 @@ import dev.mintychochip.genetics.profile.EmptyGeneticsProfile;
 import dev.mintychochip.genetics.profile.GeneticsProfile;
 import dev.mintychochip.genetics.profile.GeneticsProfiles;
 import dev.mintychochip.genetics.profile.VariantGeneticsProfile;
+import dev.mintychochip.genetics.profile.VariantLabelSets;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
@@ -27,6 +28,65 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 class BreedableProfilesCoverageTest {
+
+    private static final long FOUNDER_SEED = 20260809L;
+
+    /**
+     * Every variant profile exposes exactly the <species>.variant trait and its
+     * decoded value belongs to the label set catalogued for that species.
+     */
+    @ParameterizedTest
+    @MethodSource("variantLabelFamilies")
+    void variantProfileEmitsRegistryLabelFromItsLabelSet(
+        final String id,
+        final EntityType type,
+        final String locusKey
+    ) {
+        final GeneticsProfile profile = GeneticsProfiles.forEntityType(type);
+        assertNotNull(profile);
+        final Genome genome = profile.founder(Sex.FEMALE, new Random(FOUNDER_SEED));
+        final var traits = profile.phenotype(genome).traits();
+
+        assertEquals(1, traits.size(), id + " profile must expose exactly one trait");
+        assertEquals(locusKey, traits.get(0).key(), id + " trait key");
+        assertTrue(
+            VariantLabelSets.labelsFor(profile.id()).contains(traits.get(0).value()),
+            () -> id + " decoded label " + traits.get(0).value() + " must belong to its label set"
+        );
+    }
+
+    static List<Object[]> variantLabelFamilies() {
+        return List.of(
+            new Object[] {"axolotl", EntityType.AXOLOTL, "axolotl.variant"},
+            new Object[] {"cat", EntityType.CAT, "cat.variant"},
+            new Object[] {"chicken", EntityType.CHICKEN, "chicken.variant"},
+            new Object[] {"cow", EntityType.COW, "cow.variant"},
+            new Object[] {"mooshroom", EntityType.MOOSHROOM, "mooshroom.variant"},
+            new Object[] {"fox", EntityType.FOX, "fox.variant"},
+            new Object[] {"frog", EntityType.FROG, "frog.variant"},
+            new Object[] {"pig", EntityType.PIG, "pig.variant"},
+            new Object[] {"rabbit", EntityType.RABBIT, "rabbit.variant"},
+            new Object[] {"wolf", EntityType.WOLF, "wolf.variant"}
+        );
+    }
+
+    /**
+     * Direct decoder check: a founder genome decodes to one of the species'
+     * canonical labels (the registry label set is populated from real API enums).
+     */
+    @ParameterizedTest
+    @MethodSource("variantLabelFamilies")
+    void variantFounderDecodesAgainstExplicitLabelSet(
+        final String id,
+        final EntityType type,
+        final String locusKey
+    ) {
+        final GeneticsProfile profile = GeneticsProfiles.forEntityType(type);
+        final Genome genome = profile.founder(Sex.MALE, new Random(42L));
+        final String decoded = profile.phenotype(genome).getOrNull(locusKey);
+        assertNotNull(decoded, id + " must decode at " + locusKey);
+        assertTrue(VariantLabelSets.labelsFor(id).contains(decoded), id + " decoded value in label set");
+    }
 
     @Test
     void everyBreedableTypeHasAnExplicitProfile() {
@@ -104,13 +164,13 @@ class BreedableProfilesCoverageTest {
         return List.of(
             new Object[] {"axolotl", "axolotl.variant", "LUCY"},
             new Object[] {"cat", "cat.variant", "TABBY"},
-            new Object[] {"chicken", "chicken.variant", "PLYMOUTH_ROCK"},
-            new Object[] {"cow", "cow.variant", "NORMAL"},
+            new Object[] {"chicken", "chicken.variant", "COLD"},
+            new Object[] {"cow", "cow.variant", "TEMPERATE"},
             new Object[] {"mooshroom", "mooshroom.variant", "RED"},
-            new Object[] {"fox", "fox.variant", "RED"},
-            new Object[] {"frog", "frog.variant", "TEMPERATE"},
-            new Object[] {"pig", "pig.variant", "MEATY"},
-            new Object[] {"rabbit", "rabbit.variant", "BROWN"},
+            new Object[] {"fox", "fox.variant", "SNOW"},
+            new Object[] {"frog", "frog.variant", "WARM"},
+            new Object[] {"pig", "pig.variant", "COLD"},
+            new Object[] {"rabbit", "rabbit.variant", "THE_KILLER_BUNNY"},
             new Object[] {"wolf", "wolf.variant", "PALE"}
         );
     }

@@ -22,25 +22,25 @@ public final class GeneticsProfiles {
         final Map<EntityType, GeneticsProfile> map = new LinkedHashMap<>();
         map.put(EntityType.SHEEP, SheepGeneticsProfile.INSTANCE);
         map.put(EntityType.AXOLOTL, VariantGeneticsProfile.of("axolotl", "axolotl.variant",
-            List.of("LUCY", "WILD", "GOLD", "CYAN", "BLUE")));
+            List.copyOf(VariantLabelSets.AXOLOTL)));
         map.put(EntityType.CAT, VariantGeneticsProfile.of("cat", "cat.variant",
-            List.of("TABBY", "BLACK", "RED", "SIAMESE", "CALICO", "BRITISH_SHORTHAIR", "PERSIAN", "RAGDOLL", "WHITE")));
+            List.copyOf(VariantLabelSets.CAT)));
         map.put(EntityType.CHICKEN, VariantGeneticsProfile.of("chicken", "chicken.variant",
-            List.of("WHITE", "BROWN")));
+            List.copyOf(VariantLabelSets.CHICKEN)));
         map.put(EntityType.COW, VariantGeneticsProfile.of("cow", "cow.variant",
-            List.of("NORMAL")));
+            List.copyOf(VariantLabelSets.COW)));
         map.put(EntityType.MOOSHROOM, VariantGeneticsProfile.of("mooshroom", "mooshroom.variant",
-            List.of("RED", "BROWN")));
+            List.copyOf(VariantLabelSets.MOOSHROOM)));
         map.put(EntityType.FOX, VariantGeneticsProfile.of("fox", "fox.variant",
-            List.of("RED", "SNOW")));
+            List.copyOf(VariantLabelSets.FOX)));
         map.put(EntityType.FROG, VariantGeneticsProfile.of("frog", "frog.variant",
-            List.of("TEMPERATE", "WARM", "COLD")));
+            List.copyOf(VariantLabelSets.FROG)));
         map.put(EntityType.PIG, VariantGeneticsProfile.of("pig", "pig.variant",
-            List.of("MEATY", "NORMAL")));
+            List.copyOf(VariantLabelSets.PIG)));
         map.put(EntityType.RABBIT, VariantGeneticsProfile.of("rabbit", "rabbit.variant",
-            List.of("BROWN", "WHITE", "BLACK", "GOLD", "SALT_AND_PEPPER", "KILLER")));
+            List.copyOf(VariantLabelSets.RABBIT)));
         map.put(EntityType.WOLF, VariantGeneticsProfile.of("wolf", "wolf.variant",
-            List.of("PALE", "WOODS", "ASHEN", "BLACK", "CHESTNUT", "RUSTY", "SNOWY")));
+            List.copyOf(VariantLabelSets.WOLF)));
 
         map.put(EntityType.ARMADILLO, EmptyGeneticsProfile.of("armadillo"));
         map.put(EntityType.BEE, EmptyGeneticsProfile.of("bee"));
