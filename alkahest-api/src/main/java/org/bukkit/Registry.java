@@ -6,10 +6,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import dev.mintychochip.customblock.CustomBlocks;
 import dev.mintychochip.customentity.CustomEntities;
-import dev.mintychochip.memory.MemoryKeyCatalog;
-import dev.mintychochip.memory.MemoryKeyNativeRegistry;
-import dev.mintychochip.particle.ParticleCatalog;
-import dev.mintychochip.potion.PotionTypeCatalog;
 import dev.mintychochip.registry.CatalogRegistry;
 import io.papermc.paper.datacomponent.DataComponentType;
 import io.papermc.paper.entity.poi.PoiType;
@@ -237,19 +233,13 @@ public interface Registry<T extends Keyed> extends Iterable<T> {
      *
      * @see Particle
      */
-    Registry<Particle> PARTICLE_TYPE = new CatalogRegistry<>(
-        () -> new SimpleRegistry<>(VanillaParticle.class),
-        ParticleCatalog::global
-    ); // Paper
+    Registry<Particle> PARTICLE_TYPE = registryFor(RegistryKey.PARTICLE_TYPE); // Paper
     /**
      * Server potions.
      *
      * @see PotionType
      */
-    Registry<PotionType> POTION = new CatalogRegistry<>(
-        () -> new SimpleRegistry<>(org.bukkit.potion.VanillaPotionType.class),
-        PotionTypeCatalog::global
-    ); // Paper
+    Registry<PotionType> POTION = registryFor(RegistryKey.POTION); // Paper
     /**
      * Server statistics.
      *
@@ -331,10 +321,23 @@ public interface Registry<T extends Keyed> extends Iterable<T> {
      *
      * @see MemoryKey
      */
-    Registry<MemoryKey<?>> MEMORY_MODULE_TYPE = new CatalogRegistry<>(
-        MemoryKeyNativeRegistry::instance,
-        MemoryKeyCatalog::global
-    );
+    Registry<MemoryKey<?>> MEMORY_MODULE_TYPE = new NotARegistry<>() {
+
+        @Override
+        public Iterator<MemoryKey<?>> iterator() {
+            return MemoryKey.values().iterator();
+        }
+
+        @Override
+        public int size() {
+            return MemoryKey.values().size();
+        }
+
+        @Override
+        public @Nullable MemoryKey<?> get(final NamespacedKey key) {
+            return MemoryKey.getByKey(key);
+        }
+    };
     /**
      * Server fluids.
      *

@@ -1,16 +1,13 @@
 package org.bukkit.entity.memory;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import dev.mintychochip.memory.MemoryKeyCatalog;
 import org.bukkit.Keyed;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -20,23 +17,16 @@ import org.jetbrains.annotations.Nullable;
  *
  * @param <T> the class type of the memory value
  */
-public class MemoryKey<T> implements Keyed {
+public final class MemoryKey<T> implements Keyed {
 
     private final NamespacedKey namespacedKey;
     private final Class<T> tClass;
 
-    private MemoryKey(final NamespacedKey namespacedKey, final Class<T> tClass) {
-        this(namespacedKey, tClass, true);
-    }
-
-    protected MemoryKey(final NamespacedKey namespacedKey, final Class<T> tClass, final boolean vanilla) {
+    private MemoryKey(NamespacedKey namespacedKey, Class<T> tClass) {
         this.namespacedKey = namespacedKey;
         this.tClass = tClass;
-        if (vanilla) {
-            NATIVE_MEMORY_KEYS.put(namespacedKey, this);
-        }
+        MEMORY_KEYS.put(namespacedKey, this);
     }
-
 
     @NotNull
     @Override
@@ -54,21 +44,7 @@ public class MemoryKey<T> implements Keyed {
         return tClass;
     }
 
-    private static final Map<NamespacedKey, MemoryKey<?>> NATIVE_MEMORY_KEYS = new LinkedHashMap<>();
-
-    /** Returns the built-in key for {@code key}, without consulting the custom catalog. */
-    @ApiStatus.Internal
-    public static @Nullable MemoryKey<?> vanillaValue(@NotNull final NamespacedKey key) {
-        return NATIVE_MEMORY_KEYS.get(key);
-    }
-
-    public boolean isVanilla() {
-        return vanillaValue(this.namespacedKey) == this;
-    }
-
-    public boolean isCustom() {
-        return !this.isVanilla();
-    }
+    private static final Map<NamespacedKey, MemoryKey<?>> MEMORY_KEYS = new HashMap<>();
 
     // Start generate - MemoryKey
     public static final MemoryKey<Boolean> ADMIRING_DISABLED = new MemoryKey<>(NamespacedKey.minecraft("admiring_disabled"), Boolean.class);
@@ -177,20 +153,18 @@ public class MemoryKey<T> implements Keyed {
      * @return the {@link MemoryKey} or null when no {@link MemoryKey} is
      * available under that key
      */
-    public static MemoryKey<?> getByKey(@NotNull final NamespacedKey namespacedKey) {
-        final MemoryKey<?> nativeKey = vanillaValue(namespacedKey);
-        return nativeKey != null ? nativeKey : MemoryKeyCatalog.global().get(namespacedKey);
+    @Nullable
+    public static MemoryKey<?> getByKey(@NotNull NamespacedKey namespacedKey) {
+        return MEMORY_KEYS.get(namespacedKey);
     }
 
     /**
-     * Returns an immutable snapshot of all vanilla and catalog memory keys.
+     * Returns the set of all MemoryKeys.
      *
-     * @return the memory keys
+     * @return the memoryKeys
      */
     @NotNull
     public static Set<MemoryKey<?>> values() {
-        final Set<MemoryKey<?>> values = new LinkedHashSet<>(NATIVE_MEMORY_KEYS.values());
-        values.addAll(MemoryKeyCatalog.global().all());
-        return Collections.unmodifiableSet(values);
+        return new HashSet<>(MEMORY_KEYS.values());
     }
 }

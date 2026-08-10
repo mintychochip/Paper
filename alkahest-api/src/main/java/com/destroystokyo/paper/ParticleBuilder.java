@@ -17,9 +17,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Helps prepare a particle to be sent to players.
  *
- * <p>Vanilla particles use the native packet path. A custom {@link dev.mintychochip.particle.CustomParticle}
- * is routed to its immutable API receiver and installed server transport before any native
- * conversion is attempted.
+ * <p>Particles use the native packet path.
  *
  * <p>Usage of the builder is preferred over the super long
  * {@link World#spawnParticle(Particle, Location, int, double, double, double, double, Object)} API
