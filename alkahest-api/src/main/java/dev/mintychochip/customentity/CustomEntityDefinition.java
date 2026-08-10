@@ -14,7 +14,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Immutable definition of a custom entity type (identity + host + optional display name).
+ * Immutable definition of a custom entity type (identity + host + optional display name + behavior).
  *
  * <p>Implements {@link EntityType} so callers can use the same spawn APIs as vanilla:
  * {@code world.spawnEntity(loc, definition)} or {@code definition.spawn(loc)}.
@@ -22,20 +22,27 @@ import org.jetbrains.annotations.Nullable;
  * <p>The vanilla carrier remains {@link BlockDisplay} / {@link EntityType#BLOCK_DISPLAY};
  * {@link Entity#getType()} on a live instance is that carrier. Logical identity is this key
  * (PDC + {@link Entity#getCustomKey()}).
+ *
+ * <p>{@link #behavior()} receives immutable spawn/apply snapshots. The lifecycle applies
+ * carrier metadata and presentation fallback outside the receiver, without exposing mutable
+ * Bukkit or NMS handles to API code.
  */
-public final class CustomEntityDefinition implements EntityType {
+public final class CustomEntityDefinition extends CustomEntityType {
 
     private final NamespacedKey key;
     private final EntityHostSpec host;
     private final @Nullable Component displayName;
+    private final CustomEntityBehavior behavior;
 
     private CustomEntityDefinition(
         final NamespacedKey key,
         final EntityHostSpec host,
-        final @Nullable Component displayName
+        final @Nullable Component displayName,
+        final CustomEntityBehavior behavior
     ) {
         this.key = Objects.requireNonNull(key, "key");
         this.host = Objects.requireNonNull(host, "host");
+        this.behavior = Objects.requireNonNull(behavior, "behavior");
         this.displayName = displayName;
     }
 
@@ -75,6 +82,11 @@ public final class CustomEntityDefinition implements EntityType {
 
     public @Nullable Component displayName() {
         return this.displayName;
+    }
+
+    /** Immutable spawn and apply receivers owned by this definition. */
+    public @NotNull CustomEntityBehavior behavior() {
+        return this.behavior;
     }
 
     public boolean isBlockModel() {
@@ -198,6 +210,7 @@ public final class CustomEntityDefinition implements EntityType {
         private final NamespacedKey key;
         private EntityHostSpec host;
         private @Nullable Component displayName;
+        private CustomEntityBehavior behavior = CustomEntityBehavior.defaults();
 
         private Builder(final NamespacedKey key) {
             this.key = Objects.requireNonNull(key, "key");
@@ -219,11 +232,16 @@ public final class CustomEntityDefinition implements EntityType {
             return this;
         }
 
+        public Builder behavior(final CustomEntityBehavior behavior) {
+            this.behavior = Objects.requireNonNull(behavior, "behavior");
+            return this;
+        }
+
         public CustomEntityDefinition build() {
             if (this.host == null) {
                 throw new IllegalStateException("host required");
             }
-            return new CustomEntityDefinition(this.key, this.host, this.displayName);
+            return new CustomEntityDefinition(this.key, this.host, this.displayName, this.behavior);
         }
     }
 }

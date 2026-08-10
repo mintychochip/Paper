@@ -42,6 +42,7 @@ public class CustomEntityTypeParityTest {
         CustomEntities.register(def);
 
         final EntityType type = def;
+        assertTrue(type instanceof CustomEntityType);
         assertTrue(type.isCustom());
         assertFalse(type.isVanilla());
         assertEquals("mintychochip:glow_cube", type.getKey().toString());
