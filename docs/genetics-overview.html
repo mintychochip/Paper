@@ -318,6 +318,11 @@
     .lab-badge { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 13px; padding: 6px 9px; border: 1px solid rgba(119, 215, 233, .26); border-radius: 7px; color: var(--cyan); background: var(--cyan-soft); font-size: .65rem; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
     .controls-card h3, .result-card h3 { margin-bottom: 7px; font-size: 1.2rem; letter-spacing: -.025em; }
     .controls-card > p, .result-card > p { color: var(--muted); font-size: .8rem; }
+    .mode-field { margin-top: 15px; }
+    .mode-field select { border-color: rgba(166, 139, 255, .42); }
+    .equine-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 9px; }
+    .equine-fields .field { min-width: 0; }
+    .equine-fields[hidden], .generic-fields[hidden], .equine-results[hidden], .generic-results[hidden] { display: none; }
     .parent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin: 22px 0 13px; }
     .parent-card { padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.028); }
     .parent-card h4 { margin: 0 0 11px; color: var(--copper); font-size: .74rem; letter-spacing: .07em; text-transform: uppercase; }
@@ -340,6 +345,8 @@
     .result-status strong { font-size: .82rem; }
     .result-status span { color: var(--muted); font-size: .7rem; }
     .result-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+    .equine-results .result-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .equine-results .result-cell strong { font-size: .95rem; }
     .result-cell { min-height: 84px; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.028); }
     .result-cell label { display: block; margin-bottom: 8px; color: var(--faint); font-size: .64rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
     .result-cell strong { display: block; color: var(--text); font-size: 1.08rem; letter-spacing: -.025em; }
@@ -375,6 +382,7 @@
       .section { padding: 55px 0; }
       .section-header { align-items: flex-start; flex-direction: column; gap: 12px; }
       .parent-grid, .result-grid, .seed-row { grid-template-columns: 1fr; }
+      .equine-fields { grid-template-columns: 1fr; }
       .footer { flex-direction: column; }
     }
     @media (max-width: 410px) {
@@ -520,47 +528,85 @@
       <section class="section lab-section" id="lab" aria-labelledby="lab-title">
         <div class="section-header">
           <div><div class="section-kicker">04 / Browser breeding lab</div><h2 id="lab-title">Make one child.<br>Read the trail.</h2></div>
-          <p>Choose representative parent genomes and a seed. The result is reproducible, inspectable, and intentionally smaller than the production engine.</p>
+          <p>Switch between the generic inheritance demo and the real equine profile shape. The result is reproducible, inspectable, and intentionally smaller than the production engine.</p>
         </div>
         <div class="lab-grid">
           <article class="card controls-card">
             <span class="lab-badge">Illustrative browser model</span>
             <h3>Set the parent genomes</h3>
-            <p>These controls expose the rules that are easiest to see: sex, an X-linked coat marker, and a maternal vigor marker.</p>
+            <p id="mode-hint">Generic mode shows sex-linked coat and maternal inheritance. Choose the horse profile to see equine loci and numeric traits.</p>
+            <div class="field mode-field"><label for="species">Profile mode</label><select id="species"><option value="GENERIC">Generic inheritance demo</option><option value="EQUINE">Horse / equine profile</option></select></div>
             <div class="parent-grid">
               <div class="parent-card">
                 <h4>Parent A</h4>
-                <div class="field"><label for="parent-a-sex">Sex</label><select id="parent-a-sex"><option value="FEMALE">Female / XX</option><option value="MALE">Male / XY</option></select></div>
-                <div class="field"><label for="parent-a-coat">Coat allele</label><select id="parent-a-coat"><option value="BLACK">Black / o</option><option value="ORANGE">Orange / O</option></select></div>
-                <div class="field"><label for="parent-a-vigor">Maternal marker</label><select id="parent-a-vigor"><option value="M1">M1</option><option value="M2">M2</option></select></div>
+                <div class="generic-fields" id="generic-parent-a">
+                  <div class="field"><label for="parent-a-sex">Sex</label><select id="parent-a-sex"><option value="FEMALE">Female / XX</option><option value="MALE">Male / XY</option></select></div>
+                  <div class="field"><label for="parent-a-coat">Coat allele</label><select id="parent-a-coat"><option value="BLACK">Black / o</option><option value="ORANGE">Orange / O</option></select></div>
+                  <div class="field"><label for="parent-a-vigor">Maternal marker</label><select id="parent-a-vigor"><option value="M1">M1</option><option value="M2">M2</option></select></div>
+                </div>
+                <div class="equine-fields" id="equine-parent-a" hidden>
+                  <div class="field"><label for="parent-a-equine-species">Species</label><select id="parent-a-equine-species"><option value="HORSE">Horse</option><option value="DONKEY">Donkey</option><option value="MULE">Mule</option></select></div>
+                  <div class="field"><label for="parent-a-equine-sex">Sex</label><select id="parent-a-equine-sex"><option value="FEMALE">Female</option><option value="MALE">Male</option></select></div>
+                  <div class="field"><label for="parent-a-color">Color</label><select id="parent-a-color"><option>WHITE</option><option>CREAMY</option><option selected>CHESTNUT</option><option>BROWN</option><option>BLACK</option><option>GRAY</option><option>DARK_BROWN</option></select></div>
+                  <div class="field"><label for="parent-a-markings">Markings</label><select id="parent-a-markings"><option selected>NONE</option><option>WHITE</option><option>WHITE_FIELD</option><option>WHITE_DOTS</option><option>BLACK_DOTS</option></select></div>
+                  <div class="field"><label for="parent-a-speed">Speed [0.1125–0.3375]</label><input id="parent-a-speed" type="number" min="0.1125" max="0.3375" step="0.0001" value="0.24"></div>
+                  <div class="field"><label for="parent-a-jump">Jump [0.4–1.0]</label><input id="parent-a-jump" type="number" min="0.4" max="1" step="0.01" value="0.8"></div>
+                  <div class="field"><label for="parent-a-health">Health [15–30]</label><input id="parent-a-health" type="number" min="15" max="30" step="0.1" value="22"></div>
+                </div>
               </div>
               <div class="parent-card">
                 <h4>Parent B</h4>
-                <div class="field"><label for="parent-b-sex">Sex</label><select id="parent-b-sex"><option value="MALE">Male / XY</option><option value="FEMALE">Female / XX</option></select></div>
-                <div class="field"><label for="parent-b-coat">Coat allele</label><select id="parent-b-coat"><option value="ORANGE">Orange / O</option><option value="BLACK">Black / o</option></select></div>
-                <div class="field"><label for="parent-b-vigor">Maternal marker</label><select id="parent-b-vigor"><option value="M2">M2</option><option value="M1">M1</option></select></div>
+                <div class="generic-fields" id="generic-parent-b">
+                  <div class="field"><label for="parent-b-sex">Sex</label><select id="parent-b-sex"><option value="MALE">Male / XY</option><option value="FEMALE">Female / XX</option></select></div>
+                  <div class="field"><label for="parent-b-coat">Coat allele</label><select id="parent-b-coat"><option value="ORANGE">Orange / O</option><option value="BLACK">Black / o</option></select></div>
+                  <div class="field"><label for="parent-b-vigor">Maternal marker</label><select id="parent-b-vigor"><option value="M2">M2</option><option value="M1">M1</option></select></div>
+                </div>
+                <div class="equine-fields" id="equine-parent-b" hidden>
+                  <div class="field"><label for="parent-b-equine-species">Species</label><select id="parent-b-equine-species"><option value="HORSE">Horse</option><option selected value="DONKEY">Donkey</option><option value="MULE">Mule</option></select></div>
+                  <div class="field"><label for="parent-b-equine-sex">Sex</label><select id="parent-b-equine-sex"><option selected value="MALE">Male</option><option value="FEMALE">Female</option></select></div>
+                  <div class="field"><label for="parent-b-color">Color</label><select id="parent-b-color"><option>WHITE</option><option>CREAMY</option><option>CHESTNUT</option><option selected>BROWN</option><option>BLACK</option><option>GRAY</option><option>DARK_BROWN</option></select></div>
+                  <div class="field"><label for="parent-b-markings">Markings</label><select id="parent-b-markings"><option selected>NONE</option><option>WHITE</option><option>WHITE_FIELD</option><option>WHITE_DOTS</option><option>BLACK_DOTS</option></select></div>
+                  <div class="field"><label for="parent-b-speed">Speed [0.1125–0.3375]</label><input id="parent-b-speed" type="number" min="0.1125" max="0.3375" step="0.0001" value="0.21"></div>
+                  <div class="field"><label for="parent-b-jump">Jump [0.4–1.0]</label><input id="parent-b-jump" type="number" min="0.4" max="1" step="0.01" value="0.7"></div>
+                  <div class="field"><label for="parent-b-health">Health [15–30]</label><input id="parent-b-health" type="number" min="15" max="30" step="0.1" value="20"></div>
+                </div>
               </div>
             </div>
             <div class="seed-row">
               <div class="field"><label for="seed">Deterministic seed</label><input id="seed" type="number" value="42" step="1" inputmode="numeric"></div>
-              <div class="field"><label>Mutation mode</label><select aria-label="Mutation mode" disabled><option>Off for clarity</option></select></div>
+              <div class="field"><label for="mutation-mode">Mutation mode</label><select id="mutation-mode" aria-label="Mutation mode" disabled><option>Off for clarity</option></select></div>
             </div>
             <div class="button-row"><button class="primary-button" id="breed" type="button">Breed parents</button><button class="ghost-button" id="reset" type="button">Reset</button></div>
-            <p class="disclaimer">This sandbox mirrors selected production contracts; it does not execute <code>dev.mintychochip.genetics.engine.BreedingEngine</code> in the browser.</p>
+            <p class="disclaimer">This sandbox mirrors selected production contracts; it does not execute <code>dev.mintychochip.genetics.engine.BreedingEngine</code> or <code>EquineGeneticsProfile</code> in the browser.</p>
           </article>
 
           <article class="card result-card" aria-live="polite">
             <h3>Child genome report</h3>
-            <p>Every result keeps the seed and event trail visible so you can replay it.</p>
+            <p id="result-intro">Generic mode keeps the seed and event trail visible so you can replay it.</p>
             <div id="result-status" class="result-status"><strong id="status-title">Ready to breed</strong><span id="status-detail">seed 42</span></div>
-            <div class="result-grid">
-              <div class="result-cell"><label>Child sex</label><strong id="child-sex">—</strong><small id="child-sex-detail">awaiting cross</small></div>
-              <div class="result-cell"><label>Coat phenotype</label><strong id="child-coat">—</strong><small id="child-coat-detail">X-linked locus</small></div>
-              <div class="result-cell"><label>Maternal marker</label><strong id="child-maternal">—</strong><small>dam only</small></div>
+            <div class="generic-results" id="generic-results">
+              <div class="result-grid">
+                <div class="result-cell"><label>Child sex</label><strong id="child-sex">—</strong><small id="child-sex-detail">awaiting cross</small></div>
+                <div class="result-cell"><label>Coat phenotype</label><strong id="child-coat">—</strong><small id="child-coat-detail">X-linked locus</small></div>
+                <div class="result-cell"><label>Maternal marker</label><strong id="child-maternal">—</strong><small>dam only</small></div>
+                <div class="result-cell"><label>Profile</label><strong id="child-plan">Generic</strong><small>illustrative cross</small></div>
+              </div>
+              <div class="allele-strip" id="allele-strip"><span class="allele"><b>genome</b> no child attached</span></div>
             </div>
-            <div class="allele-strip" id="allele-strip"><span class="allele"><b>genome</b> no child attached</span></div>
+            <div class="equine-results" id="equine-results" hidden>
+              <div class="result-grid">
+                <div class="result-cell"><label>Child sex</label><strong id="equine-child-sex">—</strong><small>equine offspring</small></div>
+                <div class="result-cell"><label>Child plan</label><strong id="equine-child-plan">—</strong><small>species resolution</small></div>
+                <div class="result-cell"><label>Color</label><strong id="equine-child-color">—</strong><small>equine.color</small></div>
+                <div class="result-cell"><label>Markings</label><strong id="equine-child-markings">—</strong><small>equine.markings</small></div>
+                <div class="result-cell"><label>Speed</label><strong id="equine-child-speed">—</strong><small>range 0.1125–0.3375</small></div>
+                <div class="result-cell"><label>Jump</label><strong id="equine-child-jump">—</strong><small>range 0.4–1.0</small></div>
+                <div class="result-cell"><label>Health</label><strong id="equine-child-health">—</strong><small>range 15–30</small></div>
+              </div>
+              <div class="allele-strip" id="equine-allele-strip"><span class="allele"><b>equine</b> no child attached</span></div>
+            </div>
             <div class="log-title">Cross event log</div>
-            <ul class="event-log" id="event-log"><li><strong>Waiting:</strong> choose parents, then press Breed.</li></ul>
+            <ul class="event-log" id="event-log"><li><strong>Waiting:</strong> choose a profile, then press Breed.</li></ul>
           </article>
         </div>
       </section>
@@ -578,6 +624,7 @@
 
       const $ = (selector) => document.querySelector(selector);
       const controls = {
+        species: $("#species"),
         aSex: $("#parent-a-sex"),
         aCoat: $("#parent-a-coat"),
         aVigor: $("#parent-a-vigor"),
@@ -585,6 +632,12 @@
         bCoat: $("#parent-b-coat"),
         bVigor: $("#parent-b-vigor"),
         seed: $("#seed")
+      };
+
+      const equineRanges = {
+        speed: [0.1125, 0.3375],
+        jump: [0.4, 1.0],
+        health: [15.0, 30.0]
       };
 
       function createRng(seed) {
@@ -602,8 +655,34 @@
         return Number.isFinite(value) ? value : 42;
       }
 
-      function readParents() {
+      function readNumber(selector, fallback) {
+        const value = Number.parseFloat($(selector).value);
+        return Number.isFinite(value) ? value : fallback;
+      }
+
+      function readEquineParent(prefix, id) {
         return {
+          id,
+          species: $("#parent-" + prefix + "-equine-species").value,
+          sex: $("#parent-" + prefix + "-equine-sex").value,
+          color: $("#parent-" + prefix + "-color").value,
+          markings: $("#parent-" + prefix + "-markings").value,
+          speed: readNumber("#parent-" + prefix + "-speed", 0.2),
+          jump: readNumber("#parent-" + prefix + "-jump", 0.7),
+          health: readNumber("#parent-" + prefix + "-health", 20.0)
+        };
+      }
+
+      function readParents() {
+        if (controls.species.value === "EQUINE") {
+          return {
+            mode: "EQUINE",
+            a: readEquineParent("a", "A"),
+            b: readEquineParent("b", "B")
+          };
+        }
+        return {
+          mode: "GENERIC",
           a: { id: "A", sex: controls.aSex.value, coat: controls.aCoat.value, vigor: controls.aVigor.value },
           b: { id: "B", sex: controls.bSex.value, coat: controls.bCoat.value, vigor: controls.bVigor.value }
         };
@@ -613,9 +692,46 @@
         return coat === "ORANGE" ? "Orange / O" : "Black / o";
       }
 
-      function breed(parents, seed) {
+      function clamp(value, minimum, maximum) {
+        return Math.min(Math.max(value, minimum), maximum);
+      }
+
+      function createOffspringAttribute(parentA, parentB, range, random) {
+        const minimum = range[0];
+        const maximum = range[1];
+        const first = clamp(parentA, minimum, maximum);
+        const second = clamp(parentB, minimum, maximum);
+        const margin = 0.15 * (maximum - minimum);
+        const width = Math.abs(first - second) + margin * 2.0;
+        const average = (first + second) / 2.0;
+        const babyQuality = (random() + random() + random()) / 3.0 - 0.5;
+        const value = average + width * babyQuality;
+        if (value > maximum) {
+          return maximum - (value - maximum);
+        }
+        if (value < minimum) {
+          return minimum + (minimum - value);
+        }
+        return value;
+      }
+
+      function formatEquineValue(key, value) {
+        if (key === "speed") return value.toFixed(4);
+        if (key === "jump") return value.toFixed(3);
+        return value.toFixed(2);
+      }
+
+      function rejectSameSex(parents) {
+        return {
+          ok: false,
+          message: "Same-sex cross rejected by GeneticMatePolicy.",
+          detail: "both parents are " + parents.a.sex.toLowerCase()
+        };
+      }
+
+      function breedGeneric(parents, seed) {
         if (parents.a.sex === parents.b.sex) {
-          return { ok: false, message: "Same-sex cross rejected by GeneticMatePolicy.", detail: "both parents are " + parents.a.sex.toLowerCase() };
+          return rejectSameSex(parents);
         }
 
         const rng = createRng(seed);
@@ -632,6 +748,7 @@
         const coat = childSex === "FEMALE" && hasOrange && hasBlack ? "Calico" : labelForCoat(coatAlleles[0]);
         const childLabel = childSex === "MALE" ? "Male / XY" : "Female / XX";
         const events = [
+          "Generic profile selected.",
           "Opposite-sex gate passed.",
           "" + childLabel + " selected from seed " + seed + ".",
           "Dam " + mother.id + " supplied the X-linked coat allele to this " + (childSex === "MALE" ? "son" : "daughter") + ".",
@@ -640,7 +757,90 @@
           "Mutation mode is off in this visual model."
         ];
 
-        return { ok: true, seed, childSex, childLabel, coat, coatAlleles, maternalMarker, mother, father, crossover, events };
+        return { ok: true, mode: "GENERIC", seed, childSex, childLabel, coat, coatAlleles, maternalMarker, mother, father, crossover, events };
+      }
+
+      function breedEquine(parents, seed) {
+        if (parents.a.sex === parents.b.sex) {
+          return rejectSameSex(parents);
+        }
+        if (parents.a.species === "MULE" || parents.b.species === "MULE") {
+          return {
+            ok: false,
+            message: "Mule parents are rejected: the mule profile is offspring-only.",
+            detail: "mules are sterile in the breed planner"
+          };
+        }
+
+        const rng = createRng(seed);
+        const mother = parents.a.sex === "FEMALE" ? parents.a : parents.b;
+        const father = parents.a.sex === "MALE" ? parents.a : parents.b;
+        const childSex = rng() < 0.5 ? "MALE" : "FEMALE";
+        const mixedPair = new Set([parents.a.species, parents.b.species]).size === 2;
+        const childPlan = mixedPair ? "Mule plan" : parents.a.species.charAt(0) + parents.a.species.slice(1).toLowerCase() + " plan";
+        const pairLabel = parents.a.species.charAt(0) + parents.a.species.slice(1).toLowerCase() + " × " + parents.b.species.charAt(0) + parents.b.species.slice(1).toLowerCase();
+        const pairingEvent = mixedPair
+          ? pairLabel + " resolves to the mule plan."
+          : pairLabel + " uses the " + childPlan + " profile.";
+        const colorSource = rng() < 0.5 ? parents.a : parents.b;
+        const markingsSource = rng() < 0.5 ? parents.a : parents.b;
+        const color = colorSource.color;
+        const markings = markingsSource.markings;
+        const speed = createOffspringAttribute(parents.a.speed, parents.b.speed, equineRanges.speed, rng);
+        const jump = createOffspringAttribute(parents.a.jump, parents.b.jump, equineRanges.jump, rng);
+        const health = createOffspringAttribute(parents.a.health, parents.b.health, equineRanges.health, rng);
+        const childLabel = childSex === "MALE" ? "Male" : "Female";
+        const events = [
+          "Equine profile selected: five loci are active.",
+          "Opposite-sex gate passed.",
+          pairingEvent,
+          childLabel + " child selected from seed " + seed + ".",
+          "Color inherited from Parent " + colorSource.id + ": " + color + ".",
+          "Markings inherited from Parent " + markingsSource.id + ": " + markings + ".",
+          "Speed, jump, and health use the vanilla-equivalent reflected attribute formula.",
+          "Mutation mode is off in this visual model."
+        ];
+
+        return {
+          ok: true,
+          mode: "EQUINE",
+          seed,
+          childSex,
+          childLabel,
+          childPlan,
+          color,
+          markings,
+          speed,
+          jump,
+          health,
+          colorSource,
+          markingsSource,
+          events
+        };
+      }
+
+      function breed(parents, seed) {
+        return parents.mode === "EQUINE" ? breedEquine(parents, seed) : breedGeneric(parents, seed);
+      }
+
+      function isEquineMode() {
+        return controls.species.value === "EQUINE";
+      }
+
+      function syncMode() {
+        const equine = isEquineMode();
+        $("#generic-parent-a").hidden = equine;
+        $("#generic-parent-b").hidden = equine;
+        $("#equine-parent-a").hidden = !equine;
+        $("#equine-parent-b").hidden = !equine;
+        $("#generic-results").hidden = equine;
+        $("#equine-results").hidden = !equine;
+        $("#mode-hint").textContent = equine
+          ? "Equine mode exposes the five loci in EquineGeneticsProfile: color, markings, speed, jump, and health."
+          : "Generic mode shows sex-linked coat and maternal inheritance. Choose the horse profile to see equine loci and numeric traits.";
+        $("#result-intro").textContent = equine
+          ? "Equine mode reports the child plan and every trait in the horse/donkey profile."
+          : "Generic mode keeps the seed and event trail visible so you can replay it.";
       }
 
       function renderRejection(result) {
@@ -653,13 +853,20 @@
         $("#child-coat").textContent = "—";
         $("#child-coat-detail").textContent = "no genome attached";
         $("#child-maternal").textContent = "—";
+        $("#child-plan").textContent = "Rejected";
         $("#allele-strip").innerHTML = "<span class=\"allele\"><b>policy</b> " + result.message + "</span>";
+        $("#equine-child-sex").textContent = "No child";
+        $("#equine-child-plan").textContent = "Rejected";
+        $("#equine-child-color").textContent = "—";
+        $("#equine-child-markings").textContent = "—";
+        $("#equine-child-speed").textContent = "—";
+        $("#equine-child-jump").textContent = "—";
+        $("#equine-child-health").textContent = "—";
+        $("#equine-allele-strip").innerHTML = "<span class=\"allele\"><b>policy</b> " + result.message + "</span>";
         $("#event-log").innerHTML = "<li><strong>Rejected:</strong> " + result.message + "</li>";
       }
 
-      function renderResult(result) {
-        const status = $("#result-status");
-        status.classList.remove("rejected");
+      function renderGenericResult(result) {
         $("#status-title").textContent = "Child genome attached";
         $("#status-detail").textContent = "replay with seed " + result.seed;
         $("#child-sex").textContent = result.childLabel;
@@ -667,10 +874,40 @@
         $("#child-coat").textContent = result.coat;
         $("#child-coat-detail").textContent = result.coatAlleles.map(labelForCoat).join(" + ");
         $("#child-maternal").textContent = result.maternalMarker;
+        $("#child-plan").textContent = "Generic";
         $("#allele-strip").innerHTML = result.coatAlleles.map((allele, index) => {
           const source = result.childSex === "MALE" ? "dam" : (index === 0 ? "sire" : "dam");
           return "<span class=\"allele\"><b>coat</b> " + labelForCoat(allele) + " · " + source + "</span>";
         }).join("") + "<span class=\"allele\"><b>mt-vigor</b> " + result.maternalMarker + " · dam</span>";
+      }
+
+      function renderEquineResult(result) {
+        $("#status-title").textContent = "Equine child attached";
+        $("#status-detail").textContent = "replay with seed " + result.seed;
+        $("#equine-child-sex").textContent = result.childLabel;
+        $("#equine-child-plan").textContent = result.childPlan;
+        $("#equine-child-color").textContent = result.color;
+        $("#equine-child-markings").textContent = result.markings;
+        $("#equine-child-speed").textContent = formatEquineValue("speed", result.speed);
+        $("#equine-child-jump").textContent = formatEquineValue("jump", result.jump);
+        $("#equine-child-health").textContent = formatEquineValue("health", result.health);
+        $("#equine-allele-strip").innerHTML = [
+          "<span class=\"allele\"><b>color</b> " + result.color + " · Parent " + result.colorSource.id + "</span>",
+          "<span class=\"allele\"><b>markings</b> " + result.markings + " · Parent " + result.markingsSource.id + "</span>",
+          "<span class=\"allele\"><b>speed</b> " + formatEquineValue("speed", result.speed) + "</span>",
+          "<span class=\"allele\"><b>jump</b> " + formatEquineValue("jump", result.jump) + "</span>",
+          "<span class=\"allele\"><b>health</b> " + formatEquineValue("health", result.health) + "</span>"
+        ].join("");
+      }
+
+      function renderResult(result) {
+        const status = $("#result-status");
+        status.classList.remove("rejected");
+        if (result.mode === "EQUINE") {
+          renderEquineResult(result);
+        } else {
+          renderGenericResult(result);
+        }
         $("#event-log").innerHTML = result.events.map((event, index) => "<li><strong>0" + (index + 1) + ":</strong> " + event + "</li>").join("");
       }
 
@@ -687,27 +924,56 @@
         const status = $("#result-status");
         status.classList.remove("rejected");
         $("#status-title").textContent = "Ready to breed";
-        $("#status-detail").textContent = "seed 42";
+        $("#status-detail").textContent = "seed " + readSeed();
         $("#child-sex").textContent = "—";
         $("#child-sex-detail").textContent = "awaiting cross";
         $("#child-coat").textContent = "—";
         $("#child-coat-detail").textContent = "X-linked locus";
         $("#child-maternal").textContent = "—";
+        $("#child-plan").textContent = "Generic";
         $("#allele-strip").innerHTML = "<span class=\"allele\"><b>genome</b> no child attached</span>";
-        $("#event-log").innerHTML = "<li><strong>Waiting:</strong> choose parents, then press Breed.</li>";
+        $("#equine-child-sex").textContent = "—";
+        $("#equine-child-plan").textContent = "—";
+        $("#equine-child-color").textContent = "—";
+        $("#equine-child-markings").textContent = "—";
+        $("#equine-child-speed").textContent = "—";
+        $("#equine-child-jump").textContent = "—";
+        $("#equine-child-health").textContent = "—";
+        $("#equine-allele-strip").innerHTML = "<span class=\"allele\"><b>equine</b> no child attached</span>";
+        $("#event-log").innerHTML = "<li><strong>Waiting:</strong> choose a profile, then press Breed.</li>";
       }
 
       function reset() {
+        controls.species.value = "GENERIC";
         controls.aSex.value = "FEMALE";
         controls.aCoat.value = "BLACK";
         controls.aVigor.value = "M1";
         controls.bSex.value = "MALE";
         controls.bCoat.value = "ORANGE";
         controls.bVigor.value = "M2";
+        $("#parent-a-equine-species").value = "HORSE";
+        $("#parent-a-equine-sex").value = "FEMALE";
+        $("#parent-b-equine-species").value = "DONKEY";
+        $("#parent-b-equine-sex").value = "MALE";
+        $("#parent-a-color").value = "CHESTNUT";
+        $("#parent-a-markings").value = "NONE";
+        $("#parent-a-speed").value = "0.24";
+        $("#parent-a-jump").value = "0.8";
+        $("#parent-a-health").value = "22";
+        $("#parent-b-color").value = "BROWN";
+        $("#parent-b-markings").value = "NONE";
+        $("#parent-b-speed").value = "0.21";
+        $("#parent-b-jump").value = "0.7";
+        $("#parent-b-health").value = "20";
         controls.seed.value = "42";
+        syncMode();
         renderReady();
       }
 
+      controls.species.addEventListener("change", () => {
+        syncMode();
+        renderReady();
+      });
       $("#breed").addEventListener("click", runCross);
       $("#reset").addEventListener("click", reset);
       reset();

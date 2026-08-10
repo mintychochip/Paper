@@ -24,9 +24,9 @@
 - Create: `docs/genetics-overview.html`
 
 **Interfaces:**
-- HTML controls expose `#parent-a-sex`, `#parent-a-coat`, `#parent-b-sex`, `#parent-b-coat`, `#seed`, `#breed`, and `#reset`.
-- JavaScript functions `createRng(seed)`, `breed(parentA, parentB, seed)`, `renderResult(result)`, and `renderRejection(message)` keep simulation behavior isolated from page rendering.
-- Result rendering updates `#result-status`, `#child-sex`, `#child-coat`, `#child-maternal`, and `#event-log`.
+- HTML controls expose `#species`, generic parent selectors, equine parent selectors (`#parent-a-speed`, `#parent-a-jump`, `#parent-a-health`, and matching Parent B controls), `#seed`, `#breed`, and `#reset`.
+- JavaScript functions `createRng(seed)`, `breed(parents, seed)`, `renderResult(result)`, and `renderRejection(result)` keep generic and equine simulation behavior isolated from page rendering.
+- Result rendering updates the shared status/log plus generic result fields or equine result fields (`#equine-child-plan`, `#equine-child-color`, `#equine-child-markings`, `#equine-child-speed`, `#equine-child-jump`, and `#equine-child-health`).
 
 - [ ] Add the document shell, metadata, and page sections for hero, architecture, inheritance flow, evidence cards, profile matrix, coverage gaps, and simulator.
 - [ ] Add inline CSS for the dark Alkahest palette, responsive two-column layout, flow connectors, badges, result states, focus styles, and narrow-screen stacking.
@@ -34,6 +34,9 @@
 - [ ] Add parent selectors and seed controls using labels, descriptions, and native buttons.
 - [ ] Implement seeded deterministic randomness with a small integer PRNG so the same seed reproduces the same result.
 - [ ] Implement opposite-sex validation, child-sex selection, X-linked coat inheritance, calico phenotype resolution, maternal vigor inheritance, and an event log.
+- [ ] Add a Generic/Equine profile switcher; preserve the existing generic coat/maternal demo and expose the five equine loci from `EquineGeneticsProfile`.
+- [ ] Implement vanilla-equivalent reflected numeric offspring values for speed `[0.1125, 0.3375]`, jump `[0.4, 1.0]`, and health `[15.0, 30.0]`.
+- [ ] Resolve horse × donkey to a visible Mule plan and reject mule parents as sterile.
 - [ ] Add reset behavior that restores the initial parents, seed, and result state.
 - [ ] Add a visible `illustrative browser model` disclaimer beside the simulator.
 - [ ] Confirm the HTML contains no external resource references.
@@ -45,7 +48,8 @@
 
 - [ ] Open the file in Chromium and inspect the rendered desktop layout.
 - [ ] Resize to a narrow viewport and confirm the layout stacks without clipping or horizontal overflow.
-- [ ] Breed valid opposite-sex parents and confirm the result shows a child sex, coat, maternal trait, seed, and event log.
-- [ ] Set both parents to the same sex and confirm a clear rejection state appears without a child result.
-- [ ] Change the seed and confirm the displayed deterministic child result or event log changes.
-- [ ] Use Reset and confirm the initial controls and result return.
+- [ ] Breed valid opposite-sex generic parents and confirm the result shows sex, coat, maternal trait, seed, and event log.
+- [ ] Switch to Equine mode, breed the default horse × donkey parents, and confirm the result shows Mule plan, color, markings, speed, jump, health, and equine events.
+- [ ] Set both generic parents to the same sex and set an equine parent to Mule; confirm both rejection states appear without a child result.
+- [ ] Change the seed and confirm the displayed deterministic result or event log changes.
+- [ ] Use Reset and confirm Generic mode, initial controls, and a Ready-to-breed result return.

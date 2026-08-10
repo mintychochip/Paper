@@ -54,6 +54,19 @@ The sandbox is clearly labeled as a visual model. It must not claim to execute t
 - Use native controls and keyboard-accessible buttons.
 - Keep all claims visible in the page grounded in the current repository and label the simulator as illustrative.
 
+## Equine lab extension
+
+- Add a profile selector with `Generic demo` and `Horse / equine profile` modes.
+- Generic mode preserves the existing coat/maternal-marker demonstration.
+- Equine mode exposes horse/donkey parent species, color, markings, speed, jump, and health.
+- Horse and donkey parents use the profile's five loci and vanilla-equivalent quantitative ranges:
+  - speed `[0.1125, 0.3375]`
+  - jump `[0.4, 1.0]`
+  - health `[15.0, 30.0]`
+- A horse × donkey cross labels the child plan as `Mule plan`; mule parents are rejected as sterile.
+- The result card renders color, markings, speed, jump, health, child plan, and a readable inheritance log.
+- The page must state that these are visual values mirroring `EquineGeneticsProfile`, not execution of the Java class.
+
 ## Verification
 
 - Confirm the file exists and contains no external `<script src>` or stylesheet dependencies.
