@@ -1,6 +1,5 @@
 package dev.mintychochip.customblock;
 
-import dev.mintychochip.registry.CustomCatalog;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -22,7 +21,7 @@ import org.jetbrains.annotations.UnmodifiableView;
  * <p>Registrations publish immutable snapshots atomically. Readers therefore observe either
  * the previous complete catalog or the newly published complete catalog.
  */
-public final class CustomBlockCatalog implements CustomCatalog<CustomBlockDefinition> {
+public final class CustomBlockCatalog {
 
     private static final Comparator<CustomBlockDefinition> KEY_ORDER =
         Comparator.comparing(definition -> definition.namespacedKey().toString());
@@ -89,12 +88,10 @@ public final class CustomBlockCatalog implements CustomCatalog<CustomBlockDefini
         return this.snapshot.byKey().get(Objects.requireNonNull(key, "key"));
     }
 
-    @Override
     public @UnmodifiableView Collection<CustomBlockDefinition> all() {
         return this.snapshot.values();
     }
 
-    @Override
     public @UnmodifiableView Map<NamespacedKey, CustomBlockDefinition> asMap() {
         return this.snapshot.byKey();
     }

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import dev.mintychochip.customblock.BlockFeel;
 import dev.mintychochip.customblock.CustomBlockDefinition;
 import dev.mintychochip.customblock.CustomBlocks;
+import dev.mintychochip.customblock.CustomBlockCatalog;
 import dev.mintychochip.customblock.PacketHostSpec;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -81,5 +82,24 @@ public class MaterialRegistryTest {
             assertTrue(m.isVanilla());
             assertNotEquals(def, m);
         }
+    }
+
+    @Test
+    public void directCatalogSupplierPreservesMaterialBehavior() {
+        final CustomBlockCatalog catalog = CustomBlockCatalog.create();
+        final CustomBlockDefinition def = CustomBlockDefinition.builder("mintychochip:direct_contract")
+            .host(PacketHostSpec.defaults())
+            .build();
+        catalog.register(def);
+
+        final MaterialRegistry registry = new MaterialRegistry(
+            new Registry.SimpleRegistry<>(VanillaMaterial.class, mat -> !mat.isLegacy()),
+            () -> catalog
+        );
+
+        assertSame(def, registry.get(def.getKey()));
+        assertTrue(registry.isCatalog(def));
+        assertFalse(registry.isNative(def));
+        assertEquals(def, registry.stream().filter(material -> material == def).findFirst().orElseThrow());
     }
 }

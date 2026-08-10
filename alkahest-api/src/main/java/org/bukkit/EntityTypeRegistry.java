@@ -1,6 +1,6 @@
 package org.bukkit;
 
-import dev.mintychochip.registry.CustomCatalog;
+import dev.mintychochip.customentity.CustomEntityCatalog;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -31,11 +31,11 @@ public class EntityTypeRegistry extends Registry.NotARegistry<EntityType> {
         Comparator.comparing(value -> value.getKey().toString());
 
     private final Registry<VanillaEntityType> vanilla;
-    private final Supplier<? extends CustomCatalog<? extends EntityType>> catalog;
+    private final Supplier<? extends CustomEntityCatalog> catalog;
 
     public EntityTypeRegistry(
         final Registry<VanillaEntityType> vanilla,
-        final Supplier<? extends CustomCatalog<? extends EntityType>> catalog
+        final Supplier<? extends CustomEntityCatalog> catalog
     ) {
         this.vanilla = Objects.requireNonNull(vanilla, "vanilla");
         this.catalog = Objects.requireNonNull(catalog, "catalog");

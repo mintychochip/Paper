@@ -17,6 +17,6 @@ import org.jspecify.annotations.NullMarked;
 final class EntityTypeRegistry extends PaperCatalogRegistry<EntityType> {
 
     EntityTypeRegistry(final Registry<VanillaEntityType> vanilla) {
-        super(() -> vanilla, CustomEntities::catalog);
+        super(() -> vanilla, () -> CustomEntities.catalog().asMap());
     }
 }

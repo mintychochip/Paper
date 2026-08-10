@@ -1,6 +1,6 @@
 package org.bukkit;
 
-import dev.mintychochip.registry.CustomCatalog;
+import dev.mintychochip.customblock.CustomBlockCatalog;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -28,11 +28,11 @@ public final class MaterialRegistry extends Registry.NotARegistry<Material> {
         Comparator.comparing(value -> value.getKey().toString());
 
     private final Registry<VanillaMaterial> vanilla;
-    private final Supplier<? extends CustomCatalog<? extends Material>> catalog;
+    private final Supplier<? extends CustomBlockCatalog> catalog;
 
     public MaterialRegistry(
         final Registry<VanillaMaterial> vanilla,
-        final Supplier<? extends CustomCatalog<? extends Material>> catalog
+        final Supplier<? extends CustomBlockCatalog> catalog
     ) {
         this.vanilla = Objects.requireNonNull(vanilla, "vanilla");
         this.catalog = Objects.requireNonNull(catalog, "catalog");

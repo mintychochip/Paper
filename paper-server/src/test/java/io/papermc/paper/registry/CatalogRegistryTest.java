@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.mintychochip.registry.CustomCatalog;
 import io.papermc.paper.registry.tag.Tag;
 import io.papermc.paper.registry.tag.TagKey;
 import java.util.Collection;
@@ -35,23 +34,6 @@ class CatalogRegistryTest {
         }
     }
 
-    private static final class MapCatalog implements CustomCatalog<TestValue> {
-        private final Map<NamespacedKey, TestValue> values;
-
-        MapCatalog(final Map<NamespacedKey, TestValue> values) {
-            this.values = values;
-        }
-
-        @Override
-        public Collection<TestValue> all() {
-            return this.values.values();
-        }
-
-        @Override
-        public Map<NamespacedKey, TestValue> asMap() {
-            return this.values;
-        }
-    }
 
     /** Minimal native registry that also supports tags. */
     private static final class FakeNative implements Registry<TestValue> {
@@ -118,7 +100,7 @@ class CatalogRegistryTest {
         final FakeNative nativeReg,
         final Map<NamespacedKey, TestValue> catalog
     ) {
-        return new PaperCatalogRegistry<>(() -> nativeReg, () -> new MapCatalog(catalog));
+        return new PaperCatalogRegistry<>(() -> nativeReg, () -> catalog);
     }
 
     @Test

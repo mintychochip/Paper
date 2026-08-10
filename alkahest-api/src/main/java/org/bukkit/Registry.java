@@ -6,7 +6,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import dev.mintychochip.customblock.CustomBlocks;
 import dev.mintychochip.customentity.CustomEntities;
-import dev.mintychochip.registry.CatalogRegistry;
 import io.papermc.paper.datacomponent.DataComponentType;
 import io.papermc.paper.entity.poi.PoiType;
 import io.papermc.paper.registry.RegistryAccess;
