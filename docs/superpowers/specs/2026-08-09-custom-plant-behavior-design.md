@@ -222,7 +222,7 @@ CustomPlantLifecycle.randomTick(level, pos, carrier, random)
                  +--> explicit plan: validate and apply; consume native path
 ```
 
-For a custom plant, the native carrier algorithm never runs after the custom route claims the operation, even when the carrier is at maximum stage. For ordinary vanilla blocks, the hook returns false and preserves the existing ecology, brightness, age, and Bukkit growth path.
+For a custom plant, the native carrier algorithm never runs after the custom route claims the operation, even when the carrier is at maximum stage. Because vanilla `CropBlock.isRandomlyTicking` has no world position and cannot resolve custom identity, crop carriers remain scheduled at maximum age; ordinary max-age crops still exit at their existing age guard immediately after the hook. For ordinary vanilla blocks below maximum age, the hook returns false and preserves the existing ecology, brightness, age, and Bukkit growth path.
 
 
 ### Bonemeal

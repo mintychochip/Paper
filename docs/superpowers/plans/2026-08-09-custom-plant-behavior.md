@@ -119,7 +119,7 @@ public record PlantHostSpec(Material carrier, PlantKind kind) implements HostSpe
 
 Add `PLANT` to `BlockHostType`, add `PlantHostSpec` to the sealed `HostSpec` permits list, and add the `PLANT` branch to `CustomBlockDefinition#carrierMaterial()`.
 
-In `CustomBlockPlacement.carrierData`, create the selected carrier block data and set `Ageable#setAge(0)` or `Sapling#setStage(0)` when the carrier implements those Bukkit data interfaces. Do not call NMS or inspect native classes from the API spec/host classes.
+In `CustomBlockPlacement.carrierData`, create the selected carrier block data, require an `Ageable` carrier for `CROP` and a `Sapling` carrier for `SAPLING`, and set age/stage to zero. Reject a `PlantHostSpec` whose carrier data belongs to the other family instead of silently falling through to an unhooked native block. Do not call NMS or inspect native classes from the API spec/host classes.
 
 - [ ] **Step 3: Run host and existing custom-block API tests**
 
@@ -448,7 +448,7 @@ git commit -m "Route custom plant growth plans"
 
 **Interfaces:**
 - Consumes Task 3 `CustomPlantLifecycle.handleRandomTick` and `handleBonemeal`.
-- Produces thin hooks that claim only custom `PLANT` identities and leave ordinary crop/sapling execution byte-for-byte on the existing native/ecology/event path.
+- Produces thin hooks that claim only custom `PLANT` identities and preserve ordinary crop/sapling native, ecology, and event behavior after the hook returns `false`; max-age crop scheduling overhead is documented below.
 
 - [ ] **Step 1: Apply the current Minecraft source tree and write failing hook tests**
 
@@ -495,7 +495,7 @@ if (dev.mintychochip.customblock.CustomPlantLifecycle.handleRandomTick(level, po
 }
 ```
 
-The hook must run before the carrier's maximum-age gate so a custom receiver is not silently blocked by the carrier state. For non-custom blocks it returns `false`, after which all existing carrier/ecology checks run unchanged.
+The hook must run before the carrier's maximum-age gate so a custom receiver is not silently blocked by the carrier state. Since `CropBlock.isRandomlyTicking` cannot resolve world identity without a position, keep crop states scheduled at maximum age; ordinary max-age crop ticks still stop at the existing native age guard after the custom hook returns `false`. For non-custom blocks below maximum age, the hook returns `false`, after which all existing carrier/ecology checks run unchanged.
 
 Add the bonemeal hook at the beginning of `growCrops`, before the existing `CropEcology.allowsForcedGrowth` call:
 
