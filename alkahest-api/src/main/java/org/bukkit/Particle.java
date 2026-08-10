@@ -13,7 +13,8 @@ import static io.papermc.paper.util.BoundChecker.requireRange;
  * A particle identity accepted by Bukkit particle APIs.
  *
  * <p>Vanilla types are the constants on this interface (e.g. {@link #POOF}); they are instances of
- * {@link VanillaParticle}. Custom types (registered through {@link ParticleRegistry}) implement this
+ * {@link VanillaParticle}. Custom types (registered through
+ * {@link dev.mintychochip.particle.ParticleCatalog}) implement this
  * interface so they can be used anywhere a {@code Particle} is accepted, including
  * {@link com.destroystokyo.paper.ParticleBuilder}.
  *
@@ -251,7 +252,7 @@ public interface Particle extends Keyed {
 
     /**
      * All <em>vanilla</em> particle constants (not custom registrations). Prefer iterating
-     * {@link ParticleRegistry#values()} when custom values should be included.
+     * {@link dev.mintychochip.particle.ParticleCatalog#all()} when custom values should be included.
      *
      * @return an array of all vanilla particle constants
      */
@@ -265,7 +266,8 @@ public interface Particle extends Keyed {
 
     /**
      * Looks up a <em>vanilla</em> particle by its enum constant name (e.g. {@code "POOF"}).
-     * Does not resolve custom particle keys — use {@link ParticleRegistry#get(NamespacedKey)}.
+     * Does not resolve custom particle keys — use
+     * {@link dev.mintychochip.particle.ParticleCatalog#get(NamespacedKey)}.
      *
      * @param name the name of the vanilla particle constant
      * @return the matching vanilla particle

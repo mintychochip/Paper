@@ -1,10 +1,12 @@
 package org.bukkit;
 
-import dev.mintychochip.customblock.CustomBlocks;
+import dev.mintychochip.registry.CustomCatalog;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import org.jetbrains.annotations.ApiStatus;
@@ -13,48 +15,54 @@ import org.jetbrains.annotations.Nullable;
 import org.jspecify.annotations.NullMarked;
 
 /**
- * Bukkit {@link Registry} for {@link Material}: non-legacy vanilla constants plus registered
- * custom materials ({@link dev.mintychochip.customblock.CustomBlockDefinition}).
+ * Bukkit {@link Registry} view for {@link Material}: non-legacy vanilla constants merged with an
+ * injected catalog of custom materials.
  *
- * <p>mintychochip — backs {@link Registry#MATERIAL} after Material became an interface.
- * Mirrors {@link EntityTypeRegistry}: vanilla from a {@link SimpleRegistry} of
- * {@link VanillaMaterial}, customs from {@link CustomBlocks}.
- *
- * <p>Tags are unsupported (same as the former vanilla-only {@link SimpleRegistry} for materials).
+ * <p>Tags are unsupported, like the former API-side material registry.
  */
 @ApiStatus.Internal
 @NullMarked
 public final class MaterialRegistry extends Registry.NotARegistry<Material> {
 
-    private final Registry<VanillaMaterial> vanilla;
+    private static final Comparator<Material> KEY_ORDER =
+        Comparator.comparing(value -> value.getKey().toString());
 
-    public MaterialRegistry(final Registry<VanillaMaterial> vanilla) {
-        this.vanilla = vanilla;
+    private final Registry<VanillaMaterial> vanilla;
+    private final Supplier<? extends CustomCatalog<? extends Material>> catalog;
+
+    public MaterialRegistry(
+        final Registry<VanillaMaterial> vanilla,
+        final Supplier<? extends CustomCatalog<? extends Material>> catalog
+    ) {
+        this.vanilla = Objects.requireNonNull(vanilla, "vanilla");
+        this.catalog = Objects.requireNonNull(catalog, "catalog");
+    }
+
+    private List<Material> customValues() {
+        final List<Material> values = new ArrayList<>(this.catalog.get().all());
+        values.sort(KEY_ORDER);
+        return List.copyOf(values);
     }
 
     @Override
     public @Nullable Material get(final NamespacedKey key) {
-        final VanillaMaterial v = this.vanilla.get(key);
-        if (v != null) {
-            return v;
-        }
-        return CustomBlocks.get(key).orElse(null);
+        final VanillaMaterial value = this.vanilla.get(Objects.requireNonNull(key, "key"));
+        return value != null ? value : this.catalog.get().getOrNull(key);
     }
 
     @Override
     public @NotNull Iterator<Material> iterator() {
-        final Collection<dev.mintychochip.customblock.CustomBlockDefinition> custom = CustomBlocks.all();
-        final List<Material> all = new ArrayList<>(this.vanilla.size() + custom.size());
-        for (final VanillaMaterial v : this.vanilla) {
-            all.add(v);
+        final List<Material> all = new ArrayList<>(this.vanilla.size() + this.catalog.get().all().size());
+        for (final VanillaMaterial value : this.vanilla) {
+            all.add(value);
         }
-        all.addAll(custom);
+        all.addAll(customValues());
         return all.iterator();
     }
 
     @Override
     public int size() {
-        return this.vanilla.size() + CustomBlocks.all().size();
+        return this.vanilla.size() + this.catalog.get().all().size();
     }
 
     @Override
@@ -67,8 +75,8 @@ public final class MaterialRegistry extends Registry.NotARegistry<Material> {
         return value != null && this.vanilla.get(value.getKey()) == value;
     }
 
-    /** Returns whether the value is the exact object in the current custom-block catalog. */
+    /** Returns whether the value is the exact object in the injected custom catalog. */
     public boolean isCatalog(final Material value) {
-        return value != null && CustomBlocks.get(value.getKey()).orElse(null) == value;
+        return value != null && this.catalog.get().getOrNull(value.getKey()) == value;
     }
 }

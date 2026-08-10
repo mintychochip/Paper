@@ -7,7 +7,7 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * Vanilla Minecraft particles. The constants are re-exported by {@link Particle} for source
- * compatibility; custom particles are supplied by {@link ParticleRegistry}.
+ * compatibility; custom particles are supplied by {@link dev.mintychochip.particle.ParticleCatalog}.
  */
 public enum VanillaParticle implements Particle {
     // Start generate - Particle

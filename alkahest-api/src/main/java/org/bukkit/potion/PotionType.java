@@ -11,8 +11,9 @@ import org.jetbrains.annotations.Nullable;
  * A potion type identified by a namespaced key.
  *
  * <p>Vanilla constants are re-exported from this interface and owned by {@link VanillaPotionType}.
- * Custom values registered through {@link PotionTypeRegistry} have catalog identity only and are
- * not native potion holders. The static enum-style helpers are vanilla-only compatibility methods.
+ * Custom values registered through {@link dev.mintychochip.potion.PotionTypeCatalog} have catalog
+ * identity only and are not native potion holders. The static enum-style helpers are vanilla-only
+ * compatibility methods.
  */
 public interface PotionType extends Keyed, io.papermc.paper.world.flag.FeatureDependant {
 

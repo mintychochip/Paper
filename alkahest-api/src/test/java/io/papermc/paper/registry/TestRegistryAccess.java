@@ -11,9 +11,10 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Minimal {@link RegistryAccess} for paper-api unit tests.
  *
- * <p>Returns empty registries so {@link Registry} interface clinit can finish
- * (legacy / keyed fields call into RegistryAccess). Real server tests use the
- * CraftBukkit implementation under {@code @Normal} bootstrap.
+ * <p>Returns empty registries for unrelated keys so {@link Registry} interface clinit can finish
+ * (legacy / keyed fields call into RegistryAccess). Particle, potion, and memory-key requests
+ * reuse the injected catalog-backed static views. Real server tests use the CraftBukkit
+ * implementation under {@code @Normal} bootstrap.
  */
 public class TestRegistryAccess implements RegistryAccess {
 
@@ -24,7 +25,17 @@ public class TestRegistryAccess implements RegistryAccess {
     }
 
     @Override
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public @NotNull <T extends Keyed> Registry<T> getRegistry(final @NotNull RegistryKey<T> registryKey) {
+        if (RegistryKey.PARTICLE_TYPE.equals(registryKey)) {
+            return (Registry) Registry.PARTICLE_TYPE;
+        }
+        if (RegistryKey.POTION.equals(registryKey)) {
+            return (Registry) Registry.POTION;
+        }
+        if (RegistryKey.MEMORY_MODULE_TYPE.equals(registryKey)) {
+            return (Registry) Registry.MEMORY_MODULE_TYPE;
+        }
         return emptyRegistry();
     }
 

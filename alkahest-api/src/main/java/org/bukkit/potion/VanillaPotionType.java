@@ -13,7 +13,7 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * Vanilla Minecraft potion types. The constants are re-exported by {@link PotionType} for source
- * compatibility; custom potion types are supplied by {@link PotionTypeRegistry}.
+ * compatibility; custom potion types are supplied by {@link dev.mintychochip.potion.PotionTypeCatalog}.
  */
 public enum VanillaPotionType implements PotionType {
     // Start generate - PotionType

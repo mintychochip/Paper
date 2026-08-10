@@ -6,9 +6,11 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import dev.mintychochip.memory.MemoryKeyCatalog;
 import org.bukkit.Keyed;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,7 +20,7 @@ import org.jetbrains.annotations.Nullable;
  *
  * @param <T> the class type of the memory value
  */
-public final class MemoryKey<T> implements Keyed {
+public class MemoryKey<T> implements Keyed {
 
     private final NamespacedKey namespacedKey;
     private final Class<T> tClass;
@@ -27,7 +29,7 @@ public final class MemoryKey<T> implements Keyed {
         this(namespacedKey, tClass, true);
     }
 
-    private MemoryKey(final NamespacedKey namespacedKey, final Class<T> tClass, final boolean vanilla) {
+    protected MemoryKey(final NamespacedKey namespacedKey, final Class<T> tClass, final boolean vanilla) {
         this.namespacedKey = namespacedKey;
         this.tClass = tClass;
         if (vanilla) {
@@ -35,9 +37,6 @@ public final class MemoryKey<T> implements Keyed {
         }
     }
 
-    static <T> MemoryKey<T> custom(final NamespacedKey namespacedKey, final Class<T> tClass) {
-        return new MemoryKey<>(namespacedKey, tClass, false);
-    }
 
     @NotNull
     @Override
@@ -57,12 +56,14 @@ public final class MemoryKey<T> implements Keyed {
 
     private static final Map<NamespacedKey, MemoryKey<?>> NATIVE_MEMORY_KEYS = new LinkedHashMap<>();
 
-    static MemoryKey<?> nativeValue(final NamespacedKey key) {
+    /** Returns the built-in key for {@code key}, without consulting the custom catalog. */
+    @ApiStatus.Internal
+    public static @Nullable MemoryKey<?> vanillaValue(@NotNull final NamespacedKey key) {
         return NATIVE_MEMORY_KEYS.get(key);
     }
 
     public boolean isVanilla() {
-        return nativeValue(this.namespacedKey) == this;
+        return vanillaValue(this.namespacedKey) == this;
     }
 
     public boolean isCustom() {
@@ -177,8 +178,8 @@ public final class MemoryKey<T> implements Keyed {
      * available under that key
      */
     public static MemoryKey<?> getByKey(@NotNull final NamespacedKey namespacedKey) {
-        final MemoryKey<?> nativeKey = nativeValue(namespacedKey);
-        return nativeKey != null ? nativeKey : MemoryKeyRegistry.get(namespacedKey);
+        final MemoryKey<?> nativeKey = vanillaValue(namespacedKey);
+        return nativeKey != null ? nativeKey : MemoryKeyCatalog.global().get(namespacedKey);
     }
 
     /**
@@ -189,7 +190,7 @@ public final class MemoryKey<T> implements Keyed {
     @NotNull
     public static Set<MemoryKey<?>> values() {
         final Set<MemoryKey<?>> values = new LinkedHashSet<>(NATIVE_MEMORY_KEYS.values());
-        values.addAll(MemoryKeyRegistry.values());
+        values.addAll(MemoryKeyCatalog.global().all());
         return Collections.unmodifiableSet(values);
     }
 }
