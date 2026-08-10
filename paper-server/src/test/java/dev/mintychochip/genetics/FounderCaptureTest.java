@@ -16,6 +16,7 @@ import dev.mintychochip.genetics.profile.EquineGeneticsProfile;
 import dev.mintychochip.genetics.profile.GeneticsProfile;
 import dev.mintychochip.genetics.profile.SheepGeneticsProfile;
 import dev.mintychochip.genetics.profile.VariantGeneticsProfile;
+import java.util.Iterator;
 import java.util.Random;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.EntityTypes;
