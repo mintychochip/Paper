@@ -11,6 +11,8 @@ import dev.mintychochip.genetics.engine.BreedingEngine;
 import dev.mintychochip.genetics.engine.RecombinationSettings;
 import dev.mintychochip.genetics.dna.MutationSettings;
 import dev.mintychochip.genetics.io.GenomeCodec;
+import dev.mintychochip.genetics.model.Allele;
+import dev.mintychochip.genetics.model.GeneCopy;
 import dev.mintychochip.genetics.model.Genome;
 import dev.mintychochip.genetics.model.Sex;
 import dev.mintychochip.genetics.profile.BreedableEntityTypes;
@@ -86,6 +88,24 @@ class BreedableProfilesCoverageTest {
         final String decoded = profile.phenotype(genome).getOrNull(locusKey);
         assertNotNull(decoded, id + " must decode at " + locusKey);
         assertTrue(VariantLabelSets.labelsFor(id).contains(decoded), id + " decoded value in label set");
+    }
+
+    @Test
+    void canonicalVariantLabelOrderControlsHeterozygoteResolution() {
+        final VariantGeneticsProfile profile = VariantGeneticsProfile.of(
+            "axolotl",
+            "axolotl.variant",
+            VariantLabelSets.AXOLOTL
+        );
+        final var locus = profile.catalog().all().iterator().next();
+        final Genome genome = Genome.builder(Sex.FEMALE)
+            .put(locus, GeneCopy.diploid(
+                Allele.of("ATGAAACCC", "WILD"),
+                Allele.of("ATGCCCGGG", "LUCY")
+            ))
+            .build();
+
+        assertEquals("LUCY", profile.phenotype(genome).getOrNull("axolotl.variant"));
     }
 
     @Test

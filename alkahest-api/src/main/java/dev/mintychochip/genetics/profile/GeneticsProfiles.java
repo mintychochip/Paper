@@ -22,25 +22,25 @@ public final class GeneticsProfiles {
         final Map<EntityType, GeneticsProfile> map = new LinkedHashMap<>();
         map.put(EntityType.SHEEP, SheepGeneticsProfile.INSTANCE);
         map.put(EntityType.AXOLOTL, VariantGeneticsProfile.of("axolotl", "axolotl.variant",
-            List.copyOf(VariantLabelSets.AXOLOTL)));
+            VariantLabelSets.AXOLOTL));
         map.put(EntityType.CAT, VariantGeneticsProfile.of("cat", "cat.variant",
-            List.copyOf(VariantLabelSets.CAT)));
+            VariantLabelSets.CAT));
         map.put(EntityType.CHICKEN, VariantGeneticsProfile.of("chicken", "chicken.variant",
-            List.copyOf(VariantLabelSets.CHICKEN)));
+            VariantLabelSets.CHICKEN));
         map.put(EntityType.COW, VariantGeneticsProfile.of("cow", "cow.variant",
-            List.copyOf(VariantLabelSets.COW)));
+            VariantLabelSets.COW));
         map.put(EntityType.MOOSHROOM, VariantGeneticsProfile.of("mooshroom", "mooshroom.variant",
-            List.copyOf(VariantLabelSets.MOOSHROOM)));
+            VariantLabelSets.MOOSHROOM));
         map.put(EntityType.FOX, VariantGeneticsProfile.of("fox", "fox.variant",
-            List.copyOf(VariantLabelSets.FOX)));
+            VariantLabelSets.FOX));
         map.put(EntityType.FROG, VariantGeneticsProfile.of("frog", "frog.variant",
-            List.copyOf(VariantLabelSets.FROG)));
+            VariantLabelSets.FROG));
         map.put(EntityType.PIG, VariantGeneticsProfile.of("pig", "pig.variant",
-            List.copyOf(VariantLabelSets.PIG)));
+            VariantLabelSets.PIG));
         map.put(EntityType.RABBIT, VariantGeneticsProfile.of("rabbit", "rabbit.variant",
-            List.copyOf(VariantLabelSets.RABBIT)));
+            VariantLabelSets.RABBIT));
         map.put(EntityType.WOLF, VariantGeneticsProfile.of("wolf", "wolf.variant",
-            List.copyOf(VariantLabelSets.WOLF)));
+            VariantLabelSets.WOLF));
 
         map.put(EntityType.ARMADILLO, EmptyGeneticsProfile.of("armadillo"));
         map.put(EntityType.BEE, EmptyGeneticsProfile.of("bee"));
