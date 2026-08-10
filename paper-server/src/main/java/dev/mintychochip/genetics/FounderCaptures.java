@@ -25,7 +25,17 @@ import net.minecraft.world.entity.animal.equine.Horse;
 import net.minecraft.world.entity.animal.sheep.Sheep;
 import net.minecraft.world.item.DyeColor;
 import org.bukkit.craftbukkit.entity.CraftEntityType;
+import org.bukkit.entity.Cat;
+import org.bukkit.entity.Chicken;
+import org.bukkit.entity.Cow;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Fox;
+import org.bukkit.entity.Frog;
+import org.bukkit.entity.MushroomCow;
+import org.bukkit.entity.Pig;
+import org.bukkit.entity.Rabbit;
+import org.bukkit.entity.Villager;
+import org.bukkit.entity.Wolf;
 
 public final class FounderCaptures {
     private static final String SEQUENCE = "ATGAAACCC";
@@ -120,8 +130,33 @@ public final class FounderCaptures {
     private static Genome captureVariant(final AgeableMob entity, final GeneticsProfile profile,
                                          final Sex sex, final RandomGenerator random) {
         try {
-            final Object variant = invoke(entity, "getVariant");
-            return single(profile, sex, semanticLabel(variant));
+            final org.bukkit.entity.Entity bukkit = entity.getBukkitEntity();
+            if (bukkit == null) {
+                return profile.founder(sex, random);
+            }
+            final String label;
+            if (bukkit.getType() == EntityType.CAT) {
+                label = labelOf(((Cat) bukkit).getCatType());
+            } else if (bukkit.getType() == EntityType.CHICKEN) {
+                label = labelOf(((Chicken) bukkit).getVariant());
+            } else if (bukkit.getType() == EntityType.COW) {
+                label = labelOf(((Cow) bukkit).getVariant());
+            } else if (bukkit.getType() == EntityType.MOOSHROOM) {
+                label = labelOf(((MushroomCow) bukkit).getVariant());
+            } else if (bukkit.getType() == EntityType.FOX) {
+                label = labelOf(((Fox) bukkit).getFoxType());
+            } else if (bukkit.getType() == EntityType.FROG) {
+                label = labelOf(((Frog) bukkit).getVariant());
+            } else if (bukkit.getType() == EntityType.PIG) {
+                label = labelOf(((Pig) bukkit).getVariant());
+            } else if (bukkit.getType() == EntityType.RABBIT) {
+                label = labelOf(((Rabbit) bukkit).getRabbitType());
+            } else if (bukkit.getType() == EntityType.WOLF) {
+                label = labelOf(((Wolf) bukkit).getVariant());
+            } else {
+                label = null;
+            }
+            return label == null ? profile.founder(sex, random) : single(profile, sex, label);
         } catch (final RuntimeException ex) {
             return profile.founder(sex, random);
         }
@@ -158,12 +193,24 @@ public final class FounderCaptures {
     private static Genome captureVillager(final AgeableMob entity, final GeneticsProfile profile,
                                           final Sex sex, final RandomGenerator random) {
         try {
-            final Object data = invoke(entity, "getVillagerData");
-            final Object type = invoke(data, "type");
-            return single(profile, sex, semanticLabel(type));
+            final org.bukkit.entity.Entity bukkit = entity.getBukkitEntity();
+            if (!(bukkit instanceof Villager villager)) {
+                return profile.founder(sex, random);
+            }
+            return single(profile, sex, labelOf(villager.getVillagerType()));
         } catch (final RuntimeException ex) {
             return profile.founder(sex, random);
         }
+    }
+
+    private static String labelOf(final Object value) {
+        if (value instanceof org.bukkit.Keyed keyed) {
+            return keyed.getKey().getKey().toUpperCase(java.util.Locale.ROOT);
+        }
+        if (value instanceof Enum<?> enumeration) {
+            return enumeration.name();
+        }
+        throw new IllegalArgumentException("Unsupported registry value: " + value);
     }
 
     private static Object invoke(final Object target, final String name) {

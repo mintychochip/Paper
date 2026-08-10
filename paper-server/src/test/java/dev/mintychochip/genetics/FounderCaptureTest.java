@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import dev.mintychochip.genetics.model.GeneCopy;
 import dev.mintychochip.genetics.model.Genome;
@@ -15,7 +16,6 @@ import dev.mintychochip.genetics.profile.EquineGeneticsProfile;
 import dev.mintychochip.genetics.profile.GeneticsProfile;
 import dev.mintychochip.genetics.profile.SheepGeneticsProfile;
 import dev.mintychochip.genetics.profile.VariantGeneticsProfile;
-import java.util.Iterator;
 import java.util.Random;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.EntityTypes;
@@ -25,7 +25,10 @@ import net.minecraft.world.entity.animal.axolotl.Axolotl;
 import net.minecraft.world.entity.animal.equine.Horse;
 import net.minecraft.world.entity.animal.sheep.Sheep;
 import net.minecraft.world.item.DyeColor;
+import org.bukkit.entity.Cat;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Villager;
+import org.bukkit.entity.Wolf;
 import org.bukkit.support.environment.Normal;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -81,6 +84,60 @@ class FounderCaptureTest {
 
         assertEquals(color.name(), SheepGeneticsProfile.INSTANCE.phenotype(genome)
             .getOrNull(SheepGeneticsProfile.COLOR_KEY));
+    }
+
+    @Test
+    void registryBackedCatVariantCapturePreservesCanonicalLabel() {
+        final AgeableMob ageable = mock(AgeableMob.class);
+        doReturn(EntityTypes.CAT).when(ageable).getType();
+        final org.bukkit.craftbukkit.entity.CraftEntity facade = mock(
+            org.bukkit.craftbukkit.entity.CraftEntity.class, withSettings().extraInterfaces(Cat.class)
+        );
+        final Cat cat = (Cat) facade;
+        doReturn(EntityType.CAT).when(facade).getType();
+        when(cat.getCatType()).thenReturn(Cat.Type.JELLIE);
+        doReturn(facade).when(ageable).getBukkitEntity();
+        final GeneticsProfile profile = AnimalGenetics.profileFor(EntityType.CAT);
+
+        final Genome genome = FounderCaptures.capture(ageable, profile, Sex.FEMALE, zeroRandom());
+        assertEquals("JELLIE", labelAt(genome, firstLocus(profile)));
+        assertEquals("JELLIE", profile.phenotype(genome).getOrNull("cat.variant"));
+    }
+
+    @Test
+    void registryBackedWolfVariantCapturePreservesCanonicalLabel() {
+        final AgeableMob ageable = mock(AgeableMob.class);
+        doReturn(EntityTypes.WOLF).when(ageable).getType();
+        final org.bukkit.craftbukkit.entity.CraftEntity facade = mock(
+            org.bukkit.craftbukkit.entity.CraftEntity.class, withSettings().extraInterfaces(Wolf.class)
+        );
+        final Wolf wolf = (Wolf) facade;
+        doReturn(EntityType.WOLF).when(facade).getType();
+        when(wolf.getVariant()).thenReturn(Wolf.Variant.SPOTTED);
+        doReturn(facade).when(ageable).getBukkitEntity();
+        final GeneticsProfile profile = AnimalGenetics.profileFor(EntityType.WOLF);
+        final Genome genome = FounderCaptures.capture(ageable, profile, Sex.FEMALE, zeroRandom());
+
+        assertEquals("SPOTTED", labelAt(genome, firstLocus(profile)));
+        assertEquals("SPOTTED", profile.phenotype(genome).getOrNull("wolf.variant"));
+    }
+
+    @Test
+    void registryBackedVillagerTypeCapturePreservesCanonicalLabel() {
+        final AgeableMob ageable = mock(AgeableMob.class);
+        doReturn(EntityTypes.VILLAGER).when(ageable).getType();
+        final org.bukkit.craftbukkit.entity.CraftEntity facade = mock(
+            org.bukkit.craftbukkit.entity.CraftEntity.class, withSettings().extraInterfaces(Villager.class)
+        );
+        final Villager villager = (Villager) facade;
+        doReturn(EntityType.VILLAGER).when(facade).getType();
+        when(villager.getVillagerType()).thenReturn(Villager.Type.PLAINS);
+        doReturn(facade).when(ageable).getBukkitEntity();
+        final GeneticsProfile profile = AnimalGenetics.profileFor(EntityType.VILLAGER);
+        final Genome genome = FounderCaptures.capture(ageable, profile, Sex.FEMALE, zeroRandom());
+
+        assertEquals("PLAINS", labelAt(genome, firstLocus(profile)));
+        assertEquals("PLAINS", profile.phenotype(genome).getOrNull("villager.type"));
     }
 
     @Test
@@ -148,5 +205,19 @@ class FounderCaptureTest {
         final AttributeInstance instance = mock(AttributeInstance.class);
         when(instance.getValue()).thenReturn(value);
         return instance;
+    }
+
+    private static Random zeroRandom() {
+        return new Random(1L) {
+            @Override
+            public int nextInt(final int bound) {
+                return 0;
+            }
+
+            @Override
+            public int nextInt() {
+                return 0;
+            }
+        };
     }
 }
