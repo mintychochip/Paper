@@ -1,7 +1,6 @@
 package io.papermc.paper.registry;
 
 import dev.mintychochip.customentity.CustomEntities;
-import java.util.Map;
 import org.bukkit.Registry;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.VanillaEntityType;
@@ -17,8 +16,7 @@ import org.jspecify.annotations.NullMarked;
 @NullMarked
 final class EntityTypeRegistry extends PaperCatalogRegistry<EntityType> {
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     EntityTypeRegistry(final Registry<VanillaEntityType> vanilla) {
-        super(() -> vanilla, () -> (Map) CustomEntities.catalog().asMap());
+        super(() -> vanilla, CustomEntities::catalog);
     }
 }

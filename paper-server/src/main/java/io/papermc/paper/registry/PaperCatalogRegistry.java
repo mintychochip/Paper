@@ -1,5 +1,6 @@
 package io.papermc.paper.registry;
 
+import dev.mintychochip.registry.CustomCatalog;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -33,14 +34,14 @@ public class PaperCatalogRegistry<V extends Keyed> extends Registry.NotARegistry
         Comparator.comparing(value -> value.getKey().toString());
 
     private final Supplier<? extends Registry<? extends V>> nativeRegistry;
-    private final Supplier<? extends Map<NamespacedKey, ? extends V>> catalogSnapshot;
+    private final Supplier<? extends CustomCatalog<? extends V>> catalog;
 
     public PaperCatalogRegistry(
         final Supplier<? extends Registry<? extends V>> nativeRegistry,
-        final Supplier<? extends Map<NamespacedKey, ? extends V>> catalogSnapshot
+        final Supplier<? extends CustomCatalog<? extends V>> catalog
     ) {
         this.nativeRegistry = Objects.requireNonNull(nativeRegistry, "nativeRegistry");
-        this.catalogSnapshot = Objects.requireNonNull(catalogSnapshot, "catalogSnapshot");
+        this.catalog = Objects.requireNonNull(catalog, "catalog");
     }
 
     private Registry<? extends V> nativeRegistry() {
@@ -48,8 +49,9 @@ public class PaperCatalogRegistry<V extends Keyed> extends Registry.NotARegistry
     }
 
     private Snapshot<V> customSnapshot() {
-        final Map<NamespacedKey, ? extends V> source =
-            Objects.requireNonNull(this.catalogSnapshot.get(), "catalog snapshot");
+        final CustomCatalog<? extends V> catalog =
+            Objects.requireNonNull(this.catalog.get(), "catalog");
+        final Map<NamespacedKey, ? extends V> source = catalog.asMap();
         final List<V> values = new ArrayList<>(source.values());
         values.sort((left, right) -> KEY_ORDER.compare(left, right));
         final LinkedHashMap<NamespacedKey, V> byKey = new LinkedHashMap<>(source.size());

@@ -1,5 +1,7 @@
 package io.papermc.paper.registry;
 
+import dev.mintychochip.particle.ParticleCatalog;
+import dev.mintychochip.potion.PotionTypeCatalog;
 import io.papermc.paper.registry.set.NamedRegistryKeySetImpl;
 import io.papermc.paper.registry.tag.Tag;
 import io.papermc.paper.registry.tag.TagKey;
@@ -9,12 +11,10 @@ import net.minecraft.core.HolderSet;
 import net.minecraft.core.registries.BuiltInRegistries;
 import org.bukkit.Keyed;
 import org.bukkit.Particle;
-import org.bukkit.ParticleRegistry;
 import org.bukkit.Registry;
 import org.bukkit.VanillaParticle;
 import org.bukkit.entity.EntityType;
 import org.bukkit.potion.PotionType;
-import org.bukkit.potion.PotionTypeRegistry;
 import org.bukkit.potion.VanillaPotionType;
 import org.jspecify.annotations.NullMarked;
 
@@ -32,13 +32,13 @@ public class PaperSimpleRegistry<T extends Enum<T> & Keyed, M> extends Registry.
     static Registry<Particle> particleType() {
         final PaperSimpleRegistry<VanillaParticle, net.minecraft.core.particles.ParticleType<?>> vanilla =
             new PaperSimpleRegistry<>(VanillaParticle.class, BuiltInRegistries.PARTICLE_TYPE);
-        return new PaperCatalogRegistry<>(() -> vanilla, ParticleRegistry::asMap);
+        return new PaperCatalogRegistry<>(() -> vanilla, ParticleCatalog::global);
     }
 
     static Registry<PotionType> potion() {
         final PaperSimpleRegistry<VanillaPotionType, net.minecraft.world.item.alchemy.Potion> vanilla =
             new PaperSimpleRegistry<>(VanillaPotionType.class, BuiltInRegistries.POTION);
-        return new PaperCatalogRegistry<>(() -> vanilla, PotionTypeRegistry::asMap);
+        return new PaperCatalogRegistry<>(() -> vanilla, PotionTypeCatalog::global);
     }
 
     private final net.minecraft.core.Registry<M> nmsRegistry;

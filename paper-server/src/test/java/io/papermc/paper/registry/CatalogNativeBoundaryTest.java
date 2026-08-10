@@ -7,11 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.mintychochip.customblock.CustomBlockDefinition;
 import dev.mintychochip.customblock.CustomBlocks;
 import dev.mintychochip.customblock.PacketHostSpec;
+import dev.mintychochip.memory.MemoryKeyCatalog;
+import dev.mintychochip.particle.ParticleCatalog;
+import dev.mintychochip.potion.PotionTypeCatalog;
 import java.util.List;
 import java.util.Set;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
-import org.bukkit.ParticleRegistry;
 import org.bukkit.Registry;
 import org.bukkit.craftbukkit.CraftParticle;
 import org.bukkit.craftbukkit.block.CraftBlockType;
@@ -19,9 +21,7 @@ import org.bukkit.craftbukkit.entity.memory.CraftMemoryKey;
 import org.bukkit.craftbukkit.inventory.CraftItemType;
 import org.bukkit.craftbukkit.potion.CraftPotionType;
 import org.bukkit.entity.memory.MemoryKey;
-import org.bukkit.entity.memory.MemoryKeyRegistry;
 import org.bukkit.potion.PotionType;
-import org.bukkit.potion.PotionTypeRegistry;
 import org.bukkit.potion.VanillaPotionType;
 import org.bukkit.support.environment.AllFeatures;
 import org.junit.jupiter.api.AfterEach;
@@ -32,19 +32,19 @@ class CatalogNativeBoundaryTest {
 
     @AfterEach
     void clearCatalogs() {
-        ParticleRegistry.reset();
-        PotionTypeRegistry.reset();
-        MemoryKeyRegistry.clear();
+        ParticleCatalog.global().clear();
+        PotionTypeCatalog.global().clear();
+        MemoryKeyCatalog.global().clear();
         CustomBlocks.reset();
     }
 
     @Test
     void catalogValuesAreLiveThroughServerRegistryViews() {
-        final Particle particle = ParticleRegistry.register(
+        final Particle particle = ParticleCatalog.global().register(
             new NamespacedKey("mintychochip", "live_particle"), Void.class);
-        final PotionType potion = PotionTypeRegistry.register(
+        final PotionType potion = PotionTypeCatalog.global().register(
             new NamespacedKey("mintychochip", "live_potion"), List.of(), false, false, 1, Set.of());
-        final MemoryKey<String> memory = MemoryKeyRegistry.create(
+        final MemoryKey<String> memory = MemoryKeyCatalog.global().create(
             new NamespacedKey("mintychochip", "live_memory"), String.class);
 
         final Registry<Particle> particles = RegistryAccess.registryAccess().getRegistry(RegistryKey.PARTICLE_TYPE);
@@ -61,7 +61,7 @@ class CatalogNativeBoundaryTest {
 
     @Test
     void customParticleIsRejectedByNativeConverter() {
-        final Particle custom = ParticleRegistry.register(
+        final Particle custom = ParticleCatalog.global().register(
             new NamespacedKey("mintychochip", "native_reject"), Void.class);
         final IllegalArgumentException exception = assertThrows(
             IllegalArgumentException.class, () -> CraftParticle.bukkitToMinecraft(custom));
@@ -70,7 +70,7 @@ class CatalogNativeBoundaryTest {
 
     @Test
     void customPotionIsRejectedByNativeConverter() {
-        final PotionType custom = PotionTypeRegistry.register(
+        final PotionType custom = PotionTypeCatalog.global().register(
             new NamespacedKey("mintychochip", "native_reject"), List.of(), false, false, 1, Set.of());
         final IllegalArgumentException holderException = assertThrows(
             IllegalArgumentException.class, () -> CraftPotionType.bukkitToMinecraft(custom));
@@ -82,7 +82,7 @@ class CatalogNativeBoundaryTest {
 
     @Test
     void customMemoryKeyIsRejectedByNativeConverter() {
-        final MemoryKey<String> custom = MemoryKeyRegistry.create(
+        final MemoryKey<String> custom = MemoryKeyCatalog.global().create(
             new NamespacedKey("mintychochip", "native_reject"), String.class);
         final IllegalArgumentException exception = assertThrows(
             IllegalArgumentException.class, () -> CraftMemoryKey.bukkitToMinecraft(custom));
