@@ -1748,6 +1748,24 @@ public class CraftWorld extends CraftRegionAccessor implements World {
 
     @Override
     public <T> void spawnParticle(Particle particle, List<Player> receivers, Player sender, double x, double y, double z, int count, double offsetX, double offsetY, double offsetZ, double extra, T data, boolean force) {
+        if (dev.mintychochip.particle.CustomParticleRouter.emitIfCustom(
+            particle,
+            this,
+            receivers,
+            sender,
+            x,
+            y,
+            z,
+            count,
+            offsetX,
+            offsetY,
+            offsetZ,
+            extra,
+            data,
+            force
+        )) {
+            return;
+        }
         data = CraftParticle.convertLegacy(data);
         if (data != null) {
             Preconditions.checkArgument(particle.getDataType().isInstance(data), "data (%s) should be %s", data.getClass(), particle.getDataType());
