@@ -50,3 +50,7 @@ paper-generator.settings.gradle.kts
 
 # Don't track patched vanilla submodules
 paper-server/src/minecraft/
+.worktrees/
+# Local profiling helpers and output
+serve/
+*.hprof
