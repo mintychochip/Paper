@@ -1,0 +1,6 @@
+name: HotLoopsBench
+version: 1.0.0
+main: io.bench.BenchmarkPlugin
+api-version: "26.2"
+description: In-situ hot-loop profiling workload for Paper
+load: STARTUP
