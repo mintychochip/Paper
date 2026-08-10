@@ -28,6 +28,8 @@ import net.minecraft.world.item.DyeColor;
 import org.bukkit.entity.EntityType;
 import org.bukkit.support.environment.Normal;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 @Normal
 class FounderCaptureTest {
@@ -64,6 +66,21 @@ class FounderCaptureTest {
         assertEquals("PINK", color);
         final GeneCopy base = genome.get(SheepGeneticsProfile.BASE.id()).orElseThrow();
         assertEquals(base.alleleA().label(), base.alleleB().label());
+    }
+
+    @ParameterizedTest
+    @EnumSource(DyeColor.class)
+    void everySheepDyeColorCapturesExactly(final DyeColor color) {
+        final Sheep sheep = mock(Sheep.class);
+        doReturn(EntityTypes.SHEEP).when(sheep).getType();
+        when(sheep.getColor()).thenReturn(color);
+
+        final Genome genome = FounderCaptures.capture(
+            sheep, SheepGeneticsProfile.INSTANCE, Sex.FEMALE, new Random(1L)
+        );
+
+        assertEquals(color.name(), SheepGeneticsProfile.INSTANCE.phenotype(genome)
+            .getOrNull(SheepGeneticsProfile.COLOR_KEY));
     }
 
     @Test

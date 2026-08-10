@@ -78,13 +78,8 @@ public final class FounderCaptures {
         final DyeColor color = sheep.getColor();
         final Map<String, String> labels = new HashMap<>();
         switch (color) {
-            case WHITE -> {
-                labels.put(SheepGeneticsProfile.BASE.id().key(), "BLACK");
-                labels.put(SheepGeneticsProfile.DILUTION.id().key(), "FULL");
-                labels.put(SheepGeneticsProfile.ALBINISM.id().key(), "ALBINO");
-            }
             case BLACK, BROWN, RED, YELLOW -> {
-                labels.put(SheepGeneticsProfile.BASE.id().key(), color.getName().toUpperCase());
+                labels.put(SheepGeneticsProfile.BASE.id().key(), color.name());
                 labels.put(SheepGeneticsProfile.DILUTION.id().key(), "FULL");
                 labels.put(SheepGeneticsProfile.ALBINISM.id().key(), "PIGMENTED");
             }
@@ -97,7 +92,9 @@ public final class FounderCaptures {
                 labels.put(SheepGeneticsProfile.ALBINISM.id().key(), "PIGMENTED");
             }
             default -> {
-                return profile.founder(sex, random);
+                labels.put(SheepGeneticsProfile.BASE.id().key(), color.name());
+                labels.put(SheepGeneticsProfile.DILUTION.id().key(), "FULL");
+                labels.put(SheepGeneticsProfile.ALBINISM.id().key(), "PIGMENTED");
             }
         }
         return fromLabels(profile, sex, labels);

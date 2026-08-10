@@ -69,7 +69,7 @@ final class SheepPhenotypeDecoder {
             case "BROWN" -> "LIGHT_GRAY";
             case "RED" -> "PINK";
             case "YELLOW" -> "ORANGE";
-            default -> throw new IllegalArgumentException("Unknown sheep base color: " + base);
+            default -> base;
         };
     }
 
