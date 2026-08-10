@@ -7,6 +7,7 @@ import dev.mintychochip.provenance.ProvenanceSource;
 import dev.mintychochip.provenance.StackStamp;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.craftbukkit.CraftWorld;
@@ -191,6 +192,27 @@ public final class CustomBlockProvenance {
         final ServerLevel level = craftWorld.getHandle();
         final BlockPos pos = new BlockPos(block.getX(), block.getY(), block.getZ());
         ItemProvenance.clearPlacement(level, pos);
+    }
+    public static void movePlacement(
+        final @NotNull Location from,
+        final @NotNull Location destination
+    ) {
+        final World world = from.getWorld();
+        if (!(world instanceof CraftWorld craftWorld)) {
+            return;
+        }
+        final ServerLevel level = craftWorld.getHandle();
+        final BlockPos fromPos = new BlockPos(
+            from.getBlockX(),
+            from.getBlockY(),
+            from.getBlockZ()
+        );
+        final BlockPos toPos = new BlockPos(
+            destination.getBlockX(),
+            destination.getBlockY(),
+            destination.getBlockZ()
+        );
+        ItemProvenance.placements().move(level, fromPos, toPos);
     }
 
     /**
