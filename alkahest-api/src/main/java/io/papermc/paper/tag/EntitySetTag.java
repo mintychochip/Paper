@@ -36,7 +36,6 @@ public class EntitySetTag extends BaseTag<EntityType, EntitySetTag> {
     @NotNull
     @Override
     protected String getName(@NotNull EntityType value) {
-        final String name = value.getName();
-        return name != null ? name : value.getKey().toString();
+        return value.name();
     }
 }
