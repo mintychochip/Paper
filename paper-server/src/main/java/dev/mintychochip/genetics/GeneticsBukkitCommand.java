@@ -26,6 +26,7 @@ import net.kyori.adventure.text.Component;
 import net.minecraft.world.entity.AgeableMob;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.craftbukkit.entity.CraftEntity;
@@ -261,7 +262,7 @@ public final class GeneticsBukkitCommand extends Command {
         final EntityType type;
         try {
             type = typeName.equals("generic")
-                ? null : EntityType.getByKey(NamespacedKey.minecraft(typeName)).orElse(null);
+                ? null : Registry.ENTITY_TYPE.get(NamespacedKey.minecraft(typeName));
         } catch (final IllegalArgumentException ex) {
             sender.sendMessage(text("Unknown entity type: ", RED).append(text(args[0], YELLOW)));
             sender.sendMessage(text("Usage: /genetics profile <entity-type|generic>", GRAY));

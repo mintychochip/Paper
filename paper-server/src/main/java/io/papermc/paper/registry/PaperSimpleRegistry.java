@@ -22,11 +22,7 @@ import org.jspecify.annotations.NullMarked;
 public class PaperSimpleRegistry<T extends Enum<T> & Keyed, M> extends Registry.SimpleRegistry<T> {
 
     static Registry<EntityType> entityType() {
-        // mintychochip - EntityType is an interface; vanilla constants live on VanillaEntityType.
-        // The shared adapter merges the atomic CustomEntities snapshot and delegates tags to vanilla.
-        final PaperSimpleRegistry<org.bukkit.entity.VanillaEntityType, net.minecraft.world.entity.EntityType<?>> vanilla =
-            new PaperSimpleRegistry<>(org.bukkit.entity.VanillaEntityType.class, entity -> entity != org.bukkit.entity.VanillaEntityType.UNKNOWN, BuiltInRegistries.ENTITY_TYPE);
-        return new EntityTypeRegistry(vanilla);
+        return new PaperSimpleRegistry<>(EntityType.class, entity -> entity != EntityType.UNKNOWN, BuiltInRegistries.ENTITY_TYPE);
     }
 
     static Registry<Particle> particleType() {

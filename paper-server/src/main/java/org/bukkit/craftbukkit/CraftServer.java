@@ -601,9 +601,6 @@ public final class CraftServer implements Server {
             // mintychochip start - register custom block place/break listeners
             dev.mintychochip.customblock.CustomBlockBootstrap.ensureInstalled(this);
             // mintychochip end - custom blocks
-            // mintychochip start - register custom entity defaults
-            dev.mintychochip.customentity.CustomEntityBootstrap.ensureInstalled(this);
-            // mintychochip end - custom entities
             // mintychochip start - item provenance tracking
             dev.mintychochip.provenance.ProvenanceBootstrap.ensureInstalled(this);
             // mintychochip end - item provenance

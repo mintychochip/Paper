@@ -1565,10 +1565,7 @@ public class CraftEventFactory {
 
     public static BlockIgniteEvent callBlockIgniteEvent(Level level, BlockPos pos, Entity igniter) {
         org.bukkit.entity.Entity bukkitIgniter = igniter.getBukkitEntity();
-        // mintychochip - EntityType is interface; switch on vanilla enum implementation
-        IgniteCause cause = switch (bukkitIgniter.getType() instanceof org.bukkit.entity.VanillaEntityType vet
-            ? vet
-            : org.bukkit.entity.VanillaEntityType.UNKNOWN) {
+        IgniteCause cause = switch (bukkitIgniter.getType()) {
             case END_CRYSTAL -> IgniteCause.ENDER_CRYSTAL;
             case LIGHTNING_BOLT -> IgniteCause.LIGHTNING;
             case SMALL_FIREBALL, FIREBALL -> IgniteCause.FIREBALL;

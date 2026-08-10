@@ -5,7 +5,6 @@ import com.google.common.base.Predicates;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import dev.mintychochip.customblock.CustomBlocks;
-import dev.mintychochip.customentity.CustomEntities;
 import io.papermc.paper.datacomponent.DataComponentType;
 import io.papermc.paper.entity.poi.PoiType;
 import io.papermc.paper.registry.RegistryAccess;
@@ -163,24 +162,11 @@ public interface Registry<T extends Keyed> extends Iterable<T> {
     @Deprecated(since = "1.21")
     Registry<Enchantment> ENCHANTMENT = legacyRegistryFor(Enchantment.class);
     /**
-     * Server entity types: non-{@link org.bukkit.entity.VanillaEntityType#UNKNOWN}
-     * vanilla constants plus registered custom types
-     * ({@link dev.mintychochip.customentity.CustomEntityDefinition}).
-     *
-     * <p>{@link EntityType#values()} / {@link EntityType#valueOf(String)} remain vanilla-only;
-     * use this registry or {@link EntityType#getByKey(NamespacedKey)} for customs.
-     *
-     * <p>For tag queries, prefer {@link RegistryAccess#getRegistry(RegistryKey)} with
-     * {@link RegistryKey#ENTITY_TYPE} (server installs a tag-aware view).
+     * Server entity types.
      *
      * @see EntityType
-     * @see org.bukkit.entity.VanillaEntityType
      */
-    Registry<EntityType> ENTITY_TYPE = new EntityTypeRegistry(
-        new SimpleRegistry<>(org.bukkit.entity.VanillaEntityType.class,
-            (entity) -> entity != org.bukkit.entity.VanillaEntityType.UNKNOWN),
-        CustomEntities::catalog
-    );
+    Registry<EntityType> ENTITY_TYPE = registryFor(RegistryKey.ENTITY_TYPE);
     /**
      * Server instruments.
      *

@@ -30,7 +30,7 @@ public class EntitySetTag extends BaseTag<EntityType, EntitySetTag> {
     @NotNull
     @Override
     protected Set<EntityType> getAllPossibleValues() {
-        return Stream.of(org.bukkit.entity.VanillaEntityType.values()).collect(Collectors.toSet()); // mintychochip - vanilla only
+        return Stream.of(EntityType.values()).collect(Collectors.toSet());
     }
 
     @NotNull

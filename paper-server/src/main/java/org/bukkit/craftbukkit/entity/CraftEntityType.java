@@ -23,19 +23,9 @@ public class CraftEntityType {
         return bukkit;
     }
 
-    // mintychochip - EntityType is an interface (not enum); use HashMap. Custom types use carrier mapping.
-    private static final java.util.Map<EntityType, net.minecraft.resources.ResourceKey<net.minecraft.world.entity.EntityType<?>>> KEY_CACHE = java.util.Collections.synchronizedMap(new java.util.HashMap<>()); // Paper
+    private static final java.util.Map<EntityType, net.minecraft.resources.ResourceKey<net.minecraft.world.entity.EntityType<?>>> KEY_CACHE = java.util.Collections.synchronizedMap(new java.util.EnumMap<>(EntityType.class)); // Paper
     public static net.minecraft.world.entity.EntityType<?> bukkitToMinecraft(EntityType bukkit) {
         Preconditions.checkArgument(bukkit != null);
-        // mintychochip start - custom types map to their vanilla carrier for NMS APIs
-        if (bukkit.isCustom()) {
-            final Class<? extends org.bukkit.entity.Entity> carrier = bukkit.getEntityClass();
-            if (carrier != null && org.bukkit.entity.BlockDisplay.class.isAssignableFrom(carrier)) {
-                return bukkitToMinecraft(EntityType.BLOCK_DISPLAY);
-            }
-            throw new IllegalArgumentException("No NMS mapping for custom entity type " + bukkit.getKey());
-        }
-        // mintychochip end - custom EntityType NMS mapping
         return CraftRegistry.getMinecraftRegistry(Registries.ENTITY_TYPE)
                 .getOptional(KEY_CACHE.computeIfAbsent(bukkit, type -> CraftNamespacedKey.toResourceKey(Registries.ENTITY_TYPE, type.getKey()))).orElseThrow();
     }
