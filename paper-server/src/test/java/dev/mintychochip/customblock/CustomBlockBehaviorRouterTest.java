@@ -2,6 +2,7 @@ package dev.mintychochip.customblock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.mintychochip.behavior.ActorView;
@@ -21,6 +22,8 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.craftbukkit.block.CraftBlockType;
+import org.bukkit.craftbukkit.inventory.CraftItemType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockExplodeEvent;
@@ -54,6 +57,26 @@ class CustomBlockBehaviorRouterTest {
         assertEquals(1, calls.get());
         assertEquals(DropPlan.Kind.NONE, result.drops().kind());
         assertEquals(0, ((ValueOverride.Value<Integer>) result.experience()).value());
+    }
+
+    @Test
+    void customMaterialIsRejectedByNativeConverters() {
+        CustomBlocks.reset();
+        try {
+            final CustomBlockDefinition custom = CustomBlockDefinition.builder("mintychochip:native_reject")
+                .host(PacketHostSpec.defaults())
+                .build();
+            CustomBlocks.register(custom);
+
+            final IllegalArgumentException blockException = assertThrows(
+                IllegalArgumentException.class, () -> CraftBlockType.bukkitToMinecraft(custom));
+            final IllegalArgumentException itemException = assertThrows(
+                IllegalArgumentException.class, () -> CraftItemType.bukkitToMinecraft(custom));
+            assertTrue(blockException.getMessage().contains(custom.getKey().toString()));
+            assertTrue(itemException.getMessage().contains(custom.getKey().toString()));
+        } finally {
+            CustomBlocks.reset();
+        }
     }
 
     @Test
