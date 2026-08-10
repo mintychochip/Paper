@@ -212,3 +212,23 @@ D	alkahest-api/src/test/java/dev/mintychochip/registry/CatalogStaticRegistryTest
 ```
 
 Outcome: `DONE_WITH_CONCERNS`. Both requested API compilation and retained focused tests pass after deleting the explicitly Task 3-owned stale catalog test. Gradle emitted a non-failing configuration-cache notice referencing the removed `/tmp/task2-exclude-catalog-test.gradle` init script; no repository files or build outputs were changed by that notice.
+
+Module-level API test check:
+
+```text
+./gradlew :alkahest-api:test
+```
+
+Exit code 1. The full module run reached 735 tests; `AnnotationTest > testAll()` failed with 495 missing annotation entries across ecology, genetics, and season classes. The observed tail was:
+
+```text
+AnnotationTest > testAll() FAILED
+    org.opentest4j.AssertionFailedError: There are 495 missing annotations:
+    ... missing annotation entries ...
+735 tests completed, 1 failed
+> There were failing tests. See the report at: file:///home/jlo/dev/paper/.worktrees/catalog-api-rollback-2026-08-10/alkahest-api/build/reports/tests/test/index.html
+BUILD FAILED in 4s
+4 actionable tasks: 1 executed, 3 up-to-date
+```
+
+This module-level failure is unrelated to the deleted stale catalog test; the required compile command and retained focused API test command both remain green.
