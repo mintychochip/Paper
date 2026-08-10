@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add read-only `/genetics inspect [selector]` and `/genetics profile <entity-type>` commands that expose live genotype, phenotype, and truthful profile metadata to authorized operators.
+**Goal:** Add read-only `/genetics inspect [selector]` and `/genetics profile <entity-type|generic>` commands that expose live genotype, phenotype, and truthful profile metadata to authorized operators.
 
 **Architecture:** A server-only Bukkit `Command` resolves one ageable target, reads the existing cache without creating a founder, and delegates profile/locus metadata to a small formatter/description helper. A one-time bootstrap registers the command beside the existing mintychochip bootstraps. The API genome/profile model remains unchanged except for public sheep label constants needed to expose already-defined metadata without duplicating it in server code.
 

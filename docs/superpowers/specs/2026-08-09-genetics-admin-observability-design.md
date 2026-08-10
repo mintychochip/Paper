@@ -20,9 +20,9 @@ Provide operators with a read-only way to inspect a live ageable entity's stored
 - A successful inspection displays entity type, UUID, profile ID, sex, every catalog locus, both allele displays where present, raw DNA sequence, inheritance mode, dominance mode, and the decoded phenotype.
 - Empty profiles display their stable profile ID and an explicit `no loci` message.
 
-### `/genetics profile <entity-type>`
+### `/genetics profile <entity-type|generic>`
 
-- Resolves the Bukkit `EntityType` case-insensitively and displays the profile selected by `GeneticsProfiles.forEntityType`.
+- Resolves `generic` directly to the legacy generic profile; otherwise resolves the Bukkit `EntityType` case-insensitively and displays the profile selected by `GeneticsProfiles.forEntityType`.
 - Displays profile ID, mutation/recombination mode, every locus's key, chromosome, position, inheritance mode, dominance mode, and phenotype key.
 - Displays canonical labels or numeric ranges only when that information is actually exposed by the profile catalog description. It must print `labels: not enumerated` when no description exists rather than inferring or inventing values from unrelated code.
 - The generic profile exposes the legacy catalog metadata (`coat`, `vitality`, and `mt-vigor`) but remains a fallback profile.
