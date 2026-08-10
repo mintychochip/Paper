@@ -83,3 +83,13 @@
              this.tame(player);
              this.navigation.stop();
              this.setTarget(null);
+@@ -627,7 +_,8 @@
+             && wolf.isTame()
+             && !wolf.isInSittingPose()
+             && this.isInLove()
+-            && wolf.isInLove();
++            && wolf.isInLove()
++            && dev.mintychochip.genetics.AnimalGenetics.allowsMate(this, partner);
+     }
+ 
+     public boolean isInterested() {

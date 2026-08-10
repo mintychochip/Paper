@@ -93,7 +93,8 @@ public class AnimalGeneticsHooksPresentTest {
             "src/minecraft/java/net/minecraft/world/entity/animal/equine/Horse.java",
             "src/minecraft/java/net/minecraft/world/entity/animal/equine/Llama.java",
             "src/minecraft/java/net/minecraft/world/entity/animal/equine/Donkey.java",
-            "src/minecraft/java/net/minecraft/world/entity/animal/camel/Camel.java"
+            "src/minecraft/java/net/minecraft/world/entity/animal/camel/Camel.java",
+            "src/minecraft/java/net/minecraft/world/entity/animal/wolf/Wolf.java"
         }) {
             final String content = readProjectFile(source,
                 "paper-server/" + source);
