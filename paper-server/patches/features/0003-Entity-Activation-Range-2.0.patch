@@ -355,7 +355,7 @@ index 0000000000000000000000000000000000000000..829f7685904fd741e00403647ae76d32
 +    }
 +}
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 25d76605732ecb2afd42d9eef4c2d56e662d876a..5fca2362963942c7837ef5d5e371d45f957bb961 100644
+index 538b9c206a85a48284ffa321cb1743ec075d826a..c82e4ca3f39cb93bdb830417d6bbc9bde754a6a8 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -878,6 +878,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
@@ -416,10 +416,10 @@ index 25d76605732ecb2afd42d9eef4c2d56e662d876a..5fca2362963942c7837ef5d5e371d45f
          }
      }
 diff --git a/net/minecraft/world/entity/AgeableMob.java b/net/minecraft/world/entity/AgeableMob.java
-index dad587ec02f434c0ce91244d9668664a9681f354..3cf4c6af77a315b7a6d05571192b1249efbc128c 100644
+index 3de501e7b4a277098b56bb3bb293206c7decee3e..e37c63e174005b8aa46db2225d07ec20101c26d3 100644
 --- a/net/minecraft/world/entity/AgeableMob.java
 +++ b/net/minecraft/world/entity/AgeableMob.java
-@@ -197,6 +197,21 @@ public abstract class AgeableMob extends PathfinderMob {
+@@ -213,6 +213,21 @@ public abstract class AgeableMob extends PathfinderMob {
          super.onSyncedDataUpdated(accessor);
      }
  

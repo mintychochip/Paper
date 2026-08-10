@@ -1,0 +1,12 @@
+--- a/net/minecraft/world/entity/ai/behavior/VillagerMakeLove.java
++++ b/net/minecraft/world/entity/ai/behavior/VillagerMakeLove.java
+@@ -116,6 +_,9 @@
+         target.setAge(6000);
+         child.setAge(-24000);
+         child.snapTo(source.getX(), source.getY(), source.getZ(), 0.0F, 0.0F);
++        // mintychochip start - villager genetics child preparation
++        dev.mintychochip.genetics.AnimalGenetics.prepareVillagerBreed(source, target, child);
++        // mintychochip end - villager genetics child preparation
+         level.addFreshEntityWithPassengers(child);
+         level.broadcastEntityEvent(child, EntityEvent.LOVE_HEARTS);
+         return Optional.of(child);

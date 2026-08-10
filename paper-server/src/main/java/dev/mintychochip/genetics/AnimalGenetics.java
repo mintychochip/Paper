@@ -13,6 +13,8 @@ import dev.mintychochip.genetics.io.GenomeCodec;
 import dev.mintychochip.genetics.model.Genome;
 import dev.mintychochip.genetics.model.LocusCatalog;
 import dev.mintychochip.genetics.model.Sex;
+import dev.mintychochip.genetics.profile.BreedContext;
+import dev.mintychochip.genetics.profile.BreedPlan;
 import dev.mintychochip.genetics.profile.GeneticsProfile;
 import dev.mintychochip.genetics.profile.GeneticsProfiles;
 import java.util.Map;
@@ -24,6 +26,8 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.npc.villager.VillagerType;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import org.bukkit.NamespacedKey;
@@ -338,6 +342,52 @@ public final class AnimalGenetics {
             child,
             snapshotsOf(motherGenome, fatherGenome, child, childType, parentProfile)
         );
+    }
+    /**
+     * Prepare a villager child genome before vanilla inserts the child.
+     *
+     * <p>Vanilla already chooses the child's type from the biome and parents.
+     * Feed that same biome-derived type into the profile-aware cross, then
+     * cache the result. Any profile or breed-resolution failure is ignored so
+     * vanilla child creation continues unchanged.
+     *
+     * @return whether a child genome was cached
+     */
+    public static boolean prepareVillagerBreed(
+        final Villager source,
+        final Villager target,
+        final Villager child
+    ) {
+        if (!enabled || source == null || target == null || child == null) {
+            return false;
+        }
+        try {
+            final EntityType parentType = CraftEntityType.minecraftToBukkit(source.getType());
+            final EntityType partnerType = CraftEntityType.minecraftToBukkit(target.getType());
+            final EntityType childType = CraftEntityType.minecraftToBukkit(child.getType());
+            final Optional<BreedPlan> plan = GeneticsProfiles.resolveBreed(parentType, partnerType, childType);
+            if (plan.isEmpty()) {
+                return false;
+            }
+            final Genome parentGenome = getOrCreate(source, source.getRandom());
+            final Genome partnerGenome = getOrCreate(target, target.getRandom());
+            final String environmentalVariant = VillagerType.byBiome(
+                source.level().getBiome(source.blockPosition())
+            ).identifier().getPath();
+            final Optional<Genome> childGenome = plan.get().breed(
+                parentGenome,
+                partnerGenome,
+                asGenerator(source.getRandom()),
+                BreedContext.of(parentType, partnerType, childType, environmentalVariant)
+            );
+            if (childGenome.isEmpty()) {
+                return false;
+            }
+            CACHE.put(child.getUUID(), new CacheEntry(plan.get().childProfile().id(), childGenome.get()));
+            return true;
+        } catch (final RuntimeException ignored) {
+            return false;
+        }
     }
 
     /**

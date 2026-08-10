@@ -1,5 +1,6 @@
 package dev.mintychochip.genetics;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -23,19 +24,26 @@ public class AnimalGeneticsHooksPresentTest {
         assertTrue(src.contains("dev.mintychochip.genetics.AnimalGenetics.prepareBreed"), "spawnChildFromBreeding must call AnimalGenetics.prepareBreed");
         assertTrue(src.contains("dev.mintychochip.genetics.AnimalGenetics.discardBreed"), "cancel path must discard child genome");
         assertTrue(src.contains("breedGenetics"), "EntityBreedEvent must receive genetics metadata");
-        assertTrue(src.contains("dev.mintychochip.genetics.AnimalGenetics.save"), "save path must persist genome");
-        assertTrue(src.contains("dev.mintychochip.genetics.AnimalGenetics.load"), "load path must restore genome");
+        assertFalse(src.contains("dev.mintychochip.genetics.AnimalGenetics.save"), "save hook must move to AgeableMob");
+        assertFalse(src.contains("dev.mintychochip.genetics.AnimalGenetics.load"), "load hook must move to AgeableMob");
+        assertFalse(src.contains("dev.mintychochip.genetics.AnimalGenetics.remove"), "removal hook must move to AgeableMob");
     }
 
     @Test
     public void animalPatchDocumentsGeneticsHooks() throws Exception {
-        final String text = readProjectFile(
+        final String animalPatch = readProjectFile(
             "patches/sources/net/minecraft/world/entity/animal/Animal.java.patch",
             "paper-server/patches/sources/net/minecraft/world/entity/animal/Animal.java.patch"
         );
-        assertTrue(text.contains("AnimalGenetics.allowsMate"), "patch must include mate gate");
-        assertTrue(text.contains("AnimalGenetics.prepareBreed") || text.contains("AnimalGenetics.onBreed"), "patch must include breed hook");
-        assertTrue(text.contains("AnimalGenetics.save"), "patch must include save hook");
+        final String ageablePatch = readProjectFile(
+            "patches/sources/net/minecraft/world/entity/AgeableMob.java.patch",
+            "paper-server/patches/sources/net/minecraft/world/entity/AgeableMob.java.patch"
+        );
+        assertTrue(animalPatch.contains("AnimalGenetics.allowsMate"), "patch must include mate gate");
+        assertTrue(animalPatch.contains("AnimalGenetics.prepareBreed") || animalPatch.contains("AnimalGenetics.onBreed"), "patch must include breed hook");
+        assertTrue(ageablePatch.contains("AnimalGenetics.save"), "common patch must include save hook");
+        assertTrue(ageablePatch.contains("AnimalGenetics.load"), "common patch must include load hook");
+        assertTrue(ageablePatch.contains("AnimalGenetics.remove"), "common patch must include removal hook");
     }
 
     @Test
@@ -54,13 +62,13 @@ public class AnimalGeneticsHooksPresentTest {
             "src/minecraft/java/net/minecraft/server/level/ServerLevel.java",
             "paper-server/src/minecraft/java/net/minecraft/server/level/ServerLevel.java"
         );
-        final String animal = readProjectFile(
-            "src/minecraft/java/net/minecraft/world/entity/animal/Animal.java",
-            "paper-server/src/minecraft/java/net/minecraft/world/entity/animal/Animal.java"
+        final String ageable = readProjectFile(
+            "src/minecraft/java/net/minecraft/world/entity/AgeableMob.java",
+            "paper-server/src/minecraft/java/net/minecraft/world/entity/AgeableMob.java"
         );
         assertTrue(serverLevel.contains("AnimalGenetics.onAddedToWorld"), "accepted animals must attach genetics");
-        assertTrue(animal.contains("AnimalGenetics.remove"), "removed animals must release genetics cache");
-        assertTrue(animal.contains("onRemoval"), "cache cleanup must be tied to the removal lifecycle");
+        assertTrue(ageable.contains("AnimalGenetics.remove"), "removed ageables must release genetics cache");
+        assertTrue(ageable.contains("onRemoval"), "cache cleanup must be tied to the common removal lifecycle");
     }
 
     private static String readProjectFile(final String... relativeCandidates) throws Exception {

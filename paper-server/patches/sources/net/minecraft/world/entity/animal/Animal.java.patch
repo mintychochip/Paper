@@ -32,34 +32,6 @@
      }
  
      @Override
-@@ -99,6 +_,9 @@
-         super.addAdditionalSaveData(output);
-         output.putInt("InLove", this.inLove);
-         EntityReference.store(this.loveCause, output, "LoveCause");
-+        // mintychochip start - genetics persistence
-+        dev.mintychochip.genetics.AnimalGenetics.save(this, output);
-+        // mintychochip end - genetics persistence
-     }
- 
-     @Override
-@@ -106,6 +_,17 @@
-         super.readAdditionalSaveData(input);
-         this.inLove = input.getIntOr("InLove", 0);
-         this.loveCause = EntityReference.read(input, "LoveCause");
-+        // mintychochip start - genetics persistence
-+        dev.mintychochip.genetics.AnimalGenetics.load(this, input);
-+        // mintychochip end - genetics persistence
-+    }
-+
-+    @Override
-+    public void onRemoval(final Entity.RemovalReason reason) {
-+        super.onRemoval(reason);
-+        if (reason == Entity.RemovalReason.KILLED || reason == Entity.RemovalReason.DISCARDED) {
-+            dev.mintychochip.genetics.AnimalGenetics.remove(this);
-+        }
-     }
- 
-     public static boolean checkAnimalSpawnRules(
 @@ -142,8 +_,9 @@
          if (this.isFood(itemStack)) {
              int age = this.getAge();
