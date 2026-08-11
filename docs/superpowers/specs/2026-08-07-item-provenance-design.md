@@ -74,8 +74,10 @@ explain(M) walks M → target/source ancestors
 ### Persistence
 
 - Placements: per-dimension SavedData (`mintychochip/provenance_placements`)
-- Durable store: see `2026-08-08-provenance-durable-store-design.md`
-  (`provenance.db` lineage + live + collisions + audit; spill journal; no main-thread JDBC)
+- Durable global store: see `2026-08-08-provenance-durable-store-design.md` and
+  `2026-08-10-provenance-persistence-hardening-design.md` (`provenance.db`,
+  versioned spill recovery, stable server-root migration, durable live/collision/
+  audit state, per-dimension placement SavedData, and carried entity NBT).
 
 ## Vanilla hooks
 

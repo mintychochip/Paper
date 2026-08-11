@@ -83,6 +83,43 @@ public class ProvenancePersistenceTest {
     }
 
     @Test
+    public void restartRebuildsLineageLiveAuditAndCollisionCaches() throws Exception {
+        final Path root = tempDir.resolve("mintychochip");
+        ProvenanceWriter.install(root, message -> {
+        });
+        final ItemStack parent = new ItemStack(Items.IRON_ORE, 1);
+        final UUID parentId = ItemProvenance.birth(parent, ProvenanceSource.BLOCK_DROP, HAND).orElseThrow();
+        final ItemStack child = new ItemStack(Items.IRON_INGOT, 1);
+        ItemProvenance.onSmelted(child, parentId, HAND);
+        final UUID childId = StackStamp.readId(child).orElseThrow();
+        assertTrue(ItemProvenance.observe(parent.copy(), StackLocation.playerSlot(PLAYER, 1)));
+        ProvenanceWriter.flushAndClose();
+        ProvenanceWriter.clearInstall();
+        ItemProvenance.clearAll();
+
+        ProvenanceWriter.install(root, message -> {
+        });
+        assertTrue(ItemProvenance.lineage().walkAncestors(childId).stream().anyMatch(n -> n.id().equals(parentId)));
+        assertTrue(ItemProvenance.live().contains(childId));
+        assertTrue(ProvenanceWriter.recentAudit(50).orElseThrow().stream().anyMatch(e -> e.id().equals(childId)));
+        assertFalse(ProvenanceWriter.recentCollisions(50).orElseThrow().isEmpty());
+        ProvenanceWriter.clearInstall();
+    }
+
+    @Test
+    public void flushLeavesNoCriticalSpillWhenRepositoryHealthy() throws Exception {
+        ProvenanceWriter.installForTest(tempDir.resolve("mintychochip"), message -> {}, 2);
+        for (int i = 0; i < 500; i++) {
+            ItemProvenance.birth(new ItemStack(Items.COBBLESTONE, 1), ProvenanceSource.BLOCK_DROP, HAND);
+        }
+        ProvenanceWriter.flushAndClose();
+        final Path spill = tempDir.resolve("mintychochip/provenance-spill.log");
+        assertEquals(0L, Files.exists(spill) ? Files.size(spill) : 0L);
+        assertFalse(Files.exists(tempDir.resolve("mintychochip/provenance-spill.log.replay")));
+        ProvenanceWriter.clearInstall();
+    }
+
+    @Test
     public void mergeSourceAndParentsPersistAndReload() throws Exception {
         ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });

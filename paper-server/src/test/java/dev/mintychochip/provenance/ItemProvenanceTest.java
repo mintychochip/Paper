@@ -3,26 +3,35 @@ package dev.mintychochip.provenance;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.util.datafix.DataFixers;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.storage.SavedDataStorage;
 import net.minecraft.world.level.storage.ValueInput;
 import org.bukkit.support.environment.Normal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Core provenance engine: birth → transform lineage → synthetic dupe.
  */
 @Normal
 public class ItemProvenanceTest {
+
+    @TempDir
+    Path tempDir;
 
     private static final UUID PLAYER = UUID.fromString("10000000-0000-0000-0000-000000000001");
     private static final StackLocation HAND = StackLocation.playerSlot(PLAYER, 0);
@@ -468,6 +477,33 @@ public class ItemProvenanceTest {
         assertEquals(original.blockItemId(), got.blockItemId());
         assertEquals(original.placer(), got.placer());
         assertEquals(original.placedEpochMs(), got.placedEpochMs());
+    }
+
+    @Test
+    public void placementSavedDataSurvivesStorageReopen() throws Exception {
+        final net.minecraft.core.BlockPos pos = new net.minecraft.core.BlockPos(1, 2, 3);
+        final PlacementRecord original = new PlacementRecord(
+            UUID.randomUUID(),
+            "minecraft:cobblestone",
+            "player:test",
+            123456789L
+        );
+
+        try (SavedDataStorage storage = new SavedDataStorage(tempDir, DataFixers.getDataFixer(), RegistryAccess.EMPTY)) {
+            final ProvenancePlacementsData data = storage.computeIfAbsent(ProvenancePlacementsData.TYPE);
+            data.put(pos, original);
+            storage.saveAndJoin();
+        }
+
+        try (SavedDataStorage storage = new SavedDataStorage(tempDir, DataFixers.getDataFixer(), RegistryAccess.EMPTY)) {
+            final ProvenancePlacementsData reopened = storage.get(ProvenancePlacementsData.TYPE);
+            assertNotNull(reopened);
+            final PlacementRecord got = reopened.get(pos).orElseThrow();
+            assertEquals(original.parentStackId(), got.parentStackId());
+            assertEquals(original.blockItemId(), got.blockItemId());
+            assertEquals(original.placer(), got.placer());
+            assertEquals(original.placedEpochMs(), got.placedEpochMs());
+        }
     }
 
     @Test
