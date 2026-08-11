@@ -6,6 +6,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,7 +18,6 @@ import java.util.Objects;
 import java.util.UUID;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
 /**
  * Append-only spill journal for critical provenance writes when the memory queue
  * is full (or during recovery). One JSON object per line with a {@code k}
@@ -29,19 +30,36 @@ import org.jetbrains.annotations.Nullable;
 public final class ProvenanceSpillJournal {
 
     public sealed interface SpillRecord {
-        record Lineage(@NotNull LineageNode node) implements SpillRecord {
+        long sequence();
+
+        record Lineage(long sequence, @NotNull LineageNode node) implements SpillRecord {
+            public Lineage(@NotNull LineageNode node) {
+                this(0L, node);
+            }
         }
 
-        record Live(@NotNull LiveRecord record) implements SpillRecord {
+        record Live(long sequence, @NotNull LiveRecord record) implements SpillRecord {
+            public Live(@NotNull LiveRecord record) {
+                this(0L, record);
+            }
         }
 
-        record Collision(@NotNull CollisionRecord record) implements SpillRecord {
+        record Collision(long sequence, @NotNull CollisionRecord record) implements SpillRecord {
+            public Collision(@NotNull CollisionRecord record) {
+                this(0L, record);
+            }
         }
 
-        record Audit(@NotNull ProvenanceEvent event) implements SpillRecord {
+        record Audit(long sequence, @NotNull UUID eventId, @NotNull ProvenanceEvent event) implements SpillRecord {
+            public Audit(@NotNull ProvenanceEvent event) {
+                this(0L, UUID.randomUUID(), event);
+            }
+
+            public Audit(@NotNull UUID eventId, @NotNull ProvenanceEvent event) {
+                this(0L, eventId, event);
+            }
         }
     }
-
     private final @NotNull Path path;
     private final @NotNull Path replayPath;
 
@@ -59,8 +77,14 @@ public final class ProvenanceSpillJournal {
     }
 
     public synchronized void appendLineage(final @NotNull LineageNode node) throws IOException {
+        appendLineage(0L, node);
+    }
+
+    public synchronized void appendLineage(final long sequence, final @NotNull LineageNode node) throws IOException {
         Objects.requireNonNull(node, "node");
         final JsonObject o = new JsonObject();
+        o.addProperty("v", 2);
+        o.addProperty("seq", sequence);
         o.addProperty("k", "lineage");
         o.addProperty("id", node.id().toString());
         o.addProperty("item", node.itemId());
@@ -72,19 +96,21 @@ public final class ProvenanceSpillJournal {
         }
         o.addProperty("dead", node.dead());
         if (node.dead()) {
-            // Always persist a reason so replay cannot silently revive the node.
-            final ProvenanceReason reason = node.deathReason() != null
-                ? node.deathReason()
-                : ProvenanceReason.DESTROYED;
-            o.addProperty("death_reason", reason.name());
+            o.addProperty("death_reason", (node.deathReason() != null ? node.deathReason() : ProvenanceReason.DESTROYED).name());
             o.addProperty("death_epoch", node.deathEpochMs());
         }
         appendLine(o);
     }
 
     public synchronized void appendLive(final @NotNull LiveRecord record) throws IOException {
+        appendLive(0L, record);
+    }
+
+    public synchronized void appendLive(final long sequence, final @NotNull LiveRecord record) throws IOException {
         Objects.requireNonNull(record, "record");
         final JsonObject o = new JsonObject();
+        o.addProperty("v", 2);
+        o.addProperty("seq", sequence);
         o.addProperty("k", "live");
         o.addProperty("id", record.id().toString());
         o.addProperty("item", record.itemId());
@@ -96,8 +122,14 @@ public final class ProvenanceSpillJournal {
     }
 
     public synchronized void appendCollision(final @NotNull CollisionRecord record) throws IOException {
+        appendCollision(0L, record);
+    }
+
+    public synchronized void appendCollision(final long sequence, final @NotNull CollisionRecord record) throws IOException {
         Objects.requireNonNull(record, "record");
         final JsonObject o = new JsonObject();
+        o.addProperty("v", 2);
+        o.addProperty("seq", sequence);
         o.addProperty("k", "collision");
         o.addProperty("id", record.id().toString());
         o.addProperty("kind", record.kind().name());
@@ -108,30 +140,30 @@ public final class ProvenanceSpillJournal {
     }
 
     public synchronized void appendAudit(final @NotNull ProvenanceEvent event) throws IOException {
+        appendAudit(0L, UUID.randomUUID(), event);
+    }
+    public synchronized void appendAudit(final @NotNull UUID eventId, final @NotNull ProvenanceEvent event) throws IOException {
+        appendAudit(0L, eventId, event);
+    }
+
+
+    public synchronized void appendAudit(final long sequence, final @NotNull UUID eventId, final @NotNull ProvenanceEvent event) throws IOException {
+        Objects.requireNonNull(eventId, "eventId");
         Objects.requireNonNull(event, "event");
         final JsonObject o = new JsonObject();
+        o.addProperty("v", 2);
+        o.addProperty("seq", sequence);
         o.addProperty("k", "audit");
+        o.addProperty("event_id", eventId.toString());
         o.addProperty("t", event.epochMs());
         o.addProperty("type", event.type().name());
         o.addProperty("id", event.id().toString());
-        if (event.itemId() != null) {
-            o.addProperty("item", event.itemId());
-        }
-        if (event.source() != null) {
-            o.addProperty("source", event.source().name());
-        }
-        if (event.reason() != null) {
-            o.addProperty("reason", event.reason().name());
-        }
-        if (!event.related().isEmpty()) {
-            o.add("related", uuidArray(event.related()));
-        }
-        if (event.holder() != null) {
-            o.addProperty("holder", event.holder());
-        }
-        if (event.detail() != null) {
-            o.addProperty("detail", event.detail());
-        }
+        if (event.itemId() != null) o.addProperty("item", event.itemId());
+        if (event.source() != null) o.addProperty("source", event.source().name());
+        if (event.reason() != null) o.addProperty("reason", event.reason().name());
+        if (!event.related().isEmpty()) o.add("related", uuidArray(event.related()));
+        if (event.holder() != null) o.addProperty("holder", event.holder());
+        if (event.detail() != null) o.addProperty("detail", event.detail());
         appendLine(o);
     }
 
@@ -218,18 +250,15 @@ public final class ProvenanceSpillJournal {
 
     private void appendLine(final JsonObject object) throws IOException {
         final Path parent = this.path.getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
+        if (parent != null) Files.createDirectories(parent);
+        final byte[] bytes = (object.toString() + '\n').getBytes(StandardCharsets.UTF_8);
+        try (FileChannel channel = FileChannel.open(
+            this.path, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND
+        )) {
+            final ByteBuffer buffer = ByteBuffer.wrap(bytes);
+            while (buffer.hasRemaining()) channel.write(buffer);
+            channel.force(true);
         }
-        final String line = object.toString() + '\n';
-        Files.writeString(
-            this.path,
-            line,
-            StandardCharsets.UTF_8,
-            StandardOpenOption.CREATE,
-            StandardOpenOption.WRITE,
-            StandardOpenOption.APPEND
-        );
     }
 
     private static @NotNull SpillRecord parseLine(final String line) throws IOException {
@@ -240,15 +269,20 @@ public final class ProvenanceSpillJournal {
             throw new IOException("malformed spill line: " + line, ex);
         }
         final String kind = stringOrNull(o, "k");
-        if (kind == null) {
-            throw new IOException("spill line missing k: " + line);
-        }
+        if (kind == null) throw new IOException("spill line missing k: " + line);
+        final int version = o.has("v") ? o.get("v").getAsInt() : 1;
+        if (version != 1 && version != 2) throw new IOException("unsupported spill version: " + version);
+        final long sequence = version == 2 ? o.get("seq").getAsLong() : 0L;
         try {
             return switch (kind) {
-                case "lineage" -> new SpillRecord.Lineage(parseLineage(o));
-                case "live" -> new SpillRecord.Live(parseLive(o));
-                case "collision" -> new SpillRecord.Collision(parseCollision(o));
-                case "audit" -> new SpillRecord.Audit(parseAudit(o));
+                case "lineage" -> new SpillRecord.Lineage(sequence, parseLineage(o));
+                case "live" -> new SpillRecord.Live(sequence, parseLive(o));
+                case "collision" -> new SpillRecord.Collision(sequence, parseCollision(o));
+                case "audit" -> new SpillRecord.Audit(
+                    sequence,
+                    o.has("event_id") ? UUID.fromString(requireString(o, "event_id")) : UUID.randomUUID(),
+                    parseAudit(o)
+                );
                 default -> throw new IOException("unknown spill kind: " + kind);
             };
         } catch (final IOException ex) {
@@ -268,9 +302,10 @@ public final class ProvenanceSpillJournal {
             stringOrNull(o, "holder")
         );
         if (o.has("dead") && o.get("dead").getAsBoolean()) {
-            final long deathEpoch = o.has("death_epoch") ? o.get("death_epoch").getAsLong() : 0L;
-            // Missing/invalid reason must not leave the node alive after dead=true.
-            node.markDead(parseDeathReason(stringOrNull(o, "death_reason")), deathEpoch);
+            node.markDead(
+                parseDeathReason(stringOrNull(o, "death_reason")),
+                o.has("death_epoch") ? o.get("death_epoch").getAsLong() : 0L
+            );
         }
         return node;
     }

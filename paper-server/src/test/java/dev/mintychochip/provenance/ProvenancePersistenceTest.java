@@ -500,4 +500,25 @@ public class ProvenancePersistenceTest {
             assertEquals(1, repository.loadAliveLive().size());
         }
     }
+    @Test
+    public void repositoryFailureLeavesCriticalBatchForReplay() throws Exception {
+        ProvenanceWriter.installForTest(tempDir, message -> {}, 1);
+        final ItemStack first = new ItemStack(Items.DIAMOND, 1);
+        final UUID firstId = ItemProvenance.birth(first, ProvenanceSource.LOOT, HAND).orElseThrow();
+        ProvenanceWriter.failRepositoryForTest();
+        final ItemStack second = new ItemStack(Items.DIAMOND, 1);
+        final UUID secondId = ItemProvenance.birth(second, ProvenanceSource.LOOT, HAND).orElseThrow();
+        assertTrue(ProvenanceWriter.status().contains("state=degraded"));
+        assertTrue(ProvenanceWriter.status().contains("critical-pending="));
+        ProvenanceWriter.clearInstall();
+
+        ProvenanceWriter.install(tempDir, message -> {});
+        ProvenanceWriter.flushAndClose();
+        ProvenanceWriter.clearInstall();
+        try (ProvenanceRepository repository = new ProvenanceRepository(tempDir.resolve("mintychochip/provenance.db"))) {
+            assertTrue(repository.loadLineage(firstId).isPresent());
+            assertTrue(repository.loadLineage(secondId).isPresent());
+        }
+    }
+
 }

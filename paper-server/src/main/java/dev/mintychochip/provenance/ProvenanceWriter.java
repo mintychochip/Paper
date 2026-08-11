@@ -7,7 +7,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.sql.SQLException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -40,17 +42,27 @@ public final class ProvenanceWriter {
 
     private static volatile @Nullable ProvenanceWriter instance;
 
+    public enum State { STARTING, RUNNING, DEGRADED, DRAINING, CLOSED }
+
     private final @NotNull Path auditPath;
+    private final @NotNull Path storePath;
     private final @NotNull ProvenanceSpillJournal spillJournal;
-    private final @Nullable ProvenanceRepository repository;
+    private volatile @Nullable ProvenanceRepository repository;
     private final @NotNull BlockingQueue<WriteItem> queue;
     private final @NotNull AtomicBoolean running = new AtomicBoolean(true);
     private final @NotNull Thread thread;
     private final @NotNull AtomicLong auditDropped = new AtomicLong();
     private final @NotNull AtomicLong written = new AtomicLong();
+    private final @NotNull AtomicLong criticalFailures = new AtomicLong();
+    private final @NotNull Deque<ProvenanceEvent> recentAudit = new ArrayDeque<>();
+    private final @NotNull Deque<CollisionRecord> recentCollisions = new ArrayDeque<>();
+    private volatile State state = State.STARTING;
     private long writeSequence;
     private volatile @Nullable String lastError;
     private volatile long lastErrorLogMs;
+    private volatile long lastCommitMs;
+    private volatile long nextRetryMs;
+    private long retryDelayMs = 1_000L;
     private @Nullable BufferedWriter auditWriter;
     private long auditBytes;
     private int itemsSinceFlush;
@@ -74,11 +86,11 @@ public final class ProvenanceWriter {
             this.lastError = "cannot create " + dir + ": " + ex.getMessage();
         }
         this.auditPath = dir.resolve("provenance-audit.jsonl");
+        this.storePath = dir.resolve("provenance.db");
         this.spillJournal = new ProvenanceSpillJournal(dir.resolve("provenance-spill.log"));
-
         ProvenanceRepository repo = null;
         try {
-            repo = new ProvenanceRepository(dir.resolve("provenance.db"));
+            repo = new ProvenanceRepository(this.storePath);
         } catch (final Exception ex) {
             this.lastError = "provenance store failed to open: " + ex.getMessage();
             logger.accept("[mintychochip] WARN provenance store unavailable, running in-memory only: " + ex.getMessage());
@@ -99,8 +111,14 @@ public final class ProvenanceWriter {
                 final StackLocation loc = ProvenanceRepository.parseLocationDisplay(row.locationDisplay());
                 ItemProvenance.live().put(new LiveEntry(row.id(), row.itemId(), loc, row.count(), row.epochMs()));
             }
+            synchronized (this.recentAudit) {
+                this.recentAudit.addAll(repo.loadRecentAudit(256));
+            }
+            synchronized (this.recentCollisions) {
+                this.recentCollisions.addAll(repo.loadRecentCollisions(256));
+            }
         }
-
+        this.state = repo != null && !repo.isFailed() ? State.RUNNING : State.DEGRADED;
         this.thread = new Thread(this::drain, "mintychochip-provenance-writer");
         this.thread.setDaemon(true);
         this.thread.start();
@@ -158,34 +176,30 @@ public final class ProvenanceWriter {
 
     public static void enqueueAudit(final @NotNull ProvenanceEvent event) {
         final ProvenanceWriter w = instance;
-        if (w == null) {
-            return;
-        }
-        w.offerAudit(new WriteItem.Audit(event));
+        if (w == null) return;
+        w.offerAudit(new WriteItem.Audit(w.nextSequence(), UUID.randomUUID(), event));
     }
 
     public static void enqueueLineage(final @NotNull LineageNode node) {
         final ProvenanceWriter w = instance;
-        if (w == null) {
-            return;
-        }
-        w.offerCritical(new WriteItem.Lineage(node));
+        if (w == null) return;
+        w.offerCritical(new WriteItem.Lineage(w.nextSequence(), node));
     }
 
     public static void enqueueLive(final @NotNull LiveRecord record) {
         final ProvenanceWriter w = instance;
-        if (w == null) {
-            return;
-        }
-        w.offerCritical(new WriteItem.Live(record));
+        if (w == null) return;
+        w.offerCritical(new WriteItem.Live(w.nextSequence(), record));
     }
 
     public static void enqueueCollision(final @NotNull CollisionRecord record) {
         final ProvenanceWriter w = instance;
-        if (w == null) {
-            return;
-        }
-        w.offerCritical(new WriteItem.Collision(record));
+        if (w == null) return;
+        w.offerCritical(new WriteItem.Collision(w.nextSequence(), record));
+    }
+
+    private synchronized long nextSequence() {
+        return ++this.writeSequence;
     }
 
     public static void reportStorageError(final @NotNull String context, final @NotNull Exception ex) {
@@ -197,19 +211,14 @@ public final class ProvenanceWriter {
     }
 
     private void offerCritical(final WriteItem item) {
-        if (this.running.get() && this.queue.offer(item)) {
-            return;
-        }
-        // Queue full or shutting down: never drop critical — spill (or block as last resort).
+        if (this.running.get() && this.state != State.DRAINING && this.queue.offer(item)) return;
         this.spillCritical(item);
     }
 
     private void offerAudit(final WriteItem.Audit item) {
-        if (this.running.get() && this.queue.offer(item)) {
-            return;
-        }
+        if (this.state != State.DEGRADED && this.running.get() && this.queue.offer(item)) return;
         try {
-            this.spillJournal.appendAudit(item.event());
+            this.spillJournal.appendAudit(item.sequence(), item.eventId(), item.event());
         } catch (final IOException ex) {
             this.auditDropped.incrementAndGet();
             this.recordError("audit spill failed: " + ex.getMessage());
@@ -219,14 +228,14 @@ public final class ProvenanceWriter {
     private void spillCritical(final WriteItem item) {
         try {
             switch (item) {
-                case WriteItem.Lineage lineage -> this.spillJournal.appendLineage(lineage.node());
-                case WriteItem.Live live -> this.spillJournal.appendLive(live.record());
-                case WriteItem.Collision collision -> this.spillJournal.appendCollision(collision.record());
-                case WriteItem.Audit ignored -> throw new IllegalStateException("audit is not critical");
+                case WriteItem.Lineage lineage -> this.spillJournal.appendLineage(lineage.sequence(), lineage.node());
+                case WriteItem.Live live -> this.spillJournal.appendLive(live.sequence(), live.record());
+                case WriteItem.Collision collision -> this.spillJournal.appendCollision(collision.sequence(), collision.record());
+                case WriteItem.Audit audit -> this.spillJournal.appendAudit(audit.sequence(), audit.eventId(), audit.event());
             }
         } catch (final IOException ex) {
+            this.criticalFailures.incrementAndGet();
             this.recordError("critical spill failed: " + ex.getMessage());
-            // Absolute last resort: block until the writer accepts (must not drop critical).
             try {
                 this.queue.put(item);
             } catch (final InterruptedException ie) {
@@ -235,16 +244,14 @@ public final class ProvenanceWriter {
             }
         }
     }
-
     private void drain() {
-        // Recover any pre-crash spill before accepting new work as committed.
-        this.replaySpill();
         while (this.running.get()) {
             try {
                 final WriteItem first = this.queue.poll(500, TimeUnit.MILLISECONDS);
                 if (first != null) {
                     this.processBatch(first);
                 } else {
+                    this.attemptReopen();
                     this.replaySpill();
                     this.flushAudit();
                 }
@@ -278,58 +285,76 @@ public final class ProvenanceWriter {
         batch.add(first);
         this.queue.drainTo(batch, BATCH_MAX - 1);
         final ProvenanceRepository repo = this.repository;
+        if (repo == null || repo.isFailed()) {
+            this.state = State.DEGRADED;
+            for (final WriteItem item : batch) this.spillCritical(item);
+            return;
+        }
         try {
-            if (repo != null && !repo.isFailed() && batch.size() > 1) {
-                repo.runInTransaction(ignored -> {
-                    for (final WriteItem item : batch) {
-                        this.process(item);
+            repo.runInTransaction(ignored -> {
+                for (final WriteItem item : batch) this.process(item);
+            });
+            for (final WriteItem item : batch) {
+                this.written.incrementAndGet();
+                if (item instanceof WriteItem.Audit audit) {
+                    this.appendAuditJsonl(audit.event());
+                    synchronized (this.recentAudit) {
+                        this.recentAudit.addFirst(audit.event());
+                        while (this.recentAudit.size() > 256) this.recentAudit.removeLast();
                     }
-                });
-            } else {
-                for (final WriteItem item : batch) {
-                    this.process(item);
+                } else if (item instanceof WriteItem.Collision collision) {
+                    synchronized (this.recentCollisions) {
+                        this.recentCollisions.addFirst(collision.record());
+                        while (this.recentCollisions.size() > 256) this.recentCollisions.removeLast();
+                    }
                 }
             }
+            this.lastCommitMs = System.currentTimeMillis();
+            this.state = State.RUNNING;
         } catch (final SQLException ex) {
-            if (repo != null) {
-                repo.markFailed();
-            }
+            this.state = State.DEGRADED;
+            repo.markFailed();
+            repo.close();
+            this.repository = null;
+            this.nextRetryMs = 0L;
+            for (final WriteItem item : batch) this.spillCritical(item);
             this.recordError("repository write failed: " + ex.getMessage());
         }
     }
 
     private void process(final WriteItem item) throws SQLException {
         final ProvenanceRepository repo = this.repository;
+        if (repo == null) throw new SQLException("repository unavailable");
         switch (item) {
-            case WriteItem.Audit audit -> {
-                if (repo != null) {
-                    repo.insertAudit(UUID.randomUUID(), audit.event());
-                }
-                this.appendAuditJsonl(audit.event());
-            }
-            case WriteItem.Lineage lineage -> {
-                if (repo != null) {
-                    repo.upsertLineage(lineage.node(), ++this.writeSequence);
-                }
-            }
-            case WriteItem.Live live -> {
-                if (repo != null) {
-                    repo.upsertLive(live.record(), ++this.writeSequence);
-                }
-            }
-            case WriteItem.Collision collision -> {
-                if (repo != null) {
-                    repo.insertCollision(collision.record(), collisionDedupeKey(collision.record()));
-                }
-            }
+            case WriteItem.Audit audit -> repo.insertAudit(audit.eventId(), audit.event());
+            case WriteItem.Lineage lineage -> repo.upsertLineage(lineage.node(), lineage.sequence());
+            case WriteItem.Live live -> repo.upsertLive(live.record(), live.sequence());
+            case WriteItem.Collision collision -> repo.insertCollision(collision.record(), collisionDedupeKey(collision.record()));
         }
-        this.written.incrementAndGet();
     }
 
     private static @NotNull String collisionDedupeKey(final @NotNull CollisionRecord record) {
         return record.id() + "|" + record.kind().name()
             + "|" + record.existingLocation().display()
             + "|" + record.observedLocation().display();
+    }
+
+    private void attemptReopen() {
+        if (this.repository != null || System.currentTimeMillis() < this.nextRetryMs || this.state == State.DRAINING) return;
+        try {
+            final ProvenanceRepository reopened = new ProvenanceRepository(this.storePath);
+            this.repository = reopened;
+            this.writeSequence = Math.max(this.writeSequence, reopened.maxWriteSequence());
+            ItemProvenance.lineage().attachRepository(reopened);
+            this.retryDelayMs = 1_000L;
+            this.state = State.RUNNING;
+            this.replaySpill();
+        } catch (final Exception ex) {
+            this.state = State.DEGRADED;
+            this.nextRetryMs = System.currentTimeMillis() + this.retryDelayMs;
+            this.retryDelayMs = Math.min(16_000L, this.retryDelayMs * 2L);
+            this.recordError("repository reopen failed: " + ex.getMessage());
+        }
     }
 
     private void replaySpill() {
@@ -372,15 +397,17 @@ public final class ProvenanceWriter {
     }
 
     private void applySpill(final ProvenanceSpillJournal.SpillRecord record) throws SQLException {
+        final long sequence = record.sequence() == 0L ? ++this.writeSequence : record.sequence();
+        this.writeSequence = Math.max(this.writeSequence, sequence);
         switch (record) {
             case ProvenanceSpillJournal.SpillRecord.Lineage lineage ->
-                this.process(new WriteItem.Lineage(lineage.node()));
+                this.process(new WriteItem.Lineage(sequence, lineage.node()));
             case ProvenanceSpillJournal.SpillRecord.Live live ->
-                this.process(new WriteItem.Live(live.record()));
+                this.process(new WriteItem.Live(sequence, live.record()));
             case ProvenanceSpillJournal.SpillRecord.Collision collision ->
-                this.process(new WriteItem.Collision(collision.record()));
+                this.process(new WriteItem.Collision(sequence, collision.record()));
             case ProvenanceSpillJournal.SpillRecord.Audit audit ->
-                this.process(new WriteItem.Audit(audit.event()));
+                this.process(new WriteItem.Audit(sequence, audit.eventId(), audit.event()));
         }
     }
 
@@ -480,39 +507,55 @@ public final class ProvenanceWriter {
     }
 
     public void shutdown() {
+        this.state = State.DRAINING;
         this.running.set(false);
         try {
             this.thread.join(SHUTDOWN_JOIN_MS);
         } catch (final InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
+        this.state = State.CLOSED;
+    }
+
+    static void failRepositoryForTest() {
+        final ProvenanceWriter w = instance;
+        if (w == null) return;
+        final ProvenanceRepository repo = w.repository;
+        w.repository = null;
+        w.state = State.DEGRADED;
+        if (repo != null) repo.close();
     }
 
     public static @NotNull String status() {
         final ProvenanceWriter w = instance;
-        if (w == null) {
-            return "not installed";
-        }
+        if (w == null) return "not installed";
         final String error = w.lastError == null ? "none" : w.lastError;
-        return "queue-depth=" + w.queue.size()
+        return "state=" + w.state.name().toLowerCase()
+            + " queue-depth=" + w.queue.size()
             + " spill-bytes=" + w.spillJournal.sizeBytes()
+            + " critical-pending=" + w.queue.stream().filter(i -> !(i instanceof WriteItem.Audit)).count()
+            + " critical-failures=" + w.criticalFailures.get()
             + " written=" + w.written.get()
             + " audit-dropped=" + w.auditDropped.get()
-            + " store=" + (w.repository != null && !w.repository.isFailed() ? "sqlite" : "in-memory")
+            + " last-commit-ms=" + w.lastCommitMs
+            + " store-root=" + w.auditPath.getParent()
             + " last-error=" + error;
     }
 
-    /**
-     * Recent durable audit events (newest-first) when the SQLite store is healthy.
-     * Empty when the writer is not installed or the repository is unavailable/failed —
-     * callers should fall back to {@link AuditLog#latest(int)} (chronological).
-     */
     public static Optional<List<ProvenanceEvent>> recentAudit(final int n) {
         final ProvenanceWriter w = instance;
-        if (w == null || w.repository == null || w.repository.isFailed()) {
-            return Optional.empty();
+        if (w == null) return Optional.empty();
+        synchronized (w.recentAudit) {
+            return Optional.of(List.copyOf(w.recentAudit).subList(0, Math.min(Math.max(0, n), w.recentAudit.size())));
         }
-        return Optional.of(w.repository.loadRecentAudit(n));
+    }
+
+    public static Optional<List<CollisionRecord>> recentCollisions(final int n) {
+        final ProvenanceWriter w = instance;
+        if (w == null) return Optional.empty();
+        synchronized (w.recentCollisions) {
+            return Optional.of(List.copyOf(w.recentCollisions).subList(0, Math.min(Math.max(0, n), w.recentCollisions.size())));
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -520,16 +563,18 @@ public final class ProvenanceWriter {
     // -------------------------------------------------------------------------
 
     private sealed interface WriteItem {
-        record Audit(@NotNull ProvenanceEvent event) implements WriteItem {
+        long sequence();
+
+        record Audit(long sequence, @NotNull UUID eventId, @NotNull ProvenanceEvent event) implements WriteItem {
         }
 
-        record Lineage(@NotNull LineageNode node) implements WriteItem {
+        record Lineage(long sequence, @NotNull LineageNode node) implements WriteItem {
         }
 
-        record Live(@NotNull LiveRecord record) implements WriteItem {
+        record Live(long sequence, @NotNull LiveRecord record) implements WriteItem {
         }
 
-        record Collision(@NotNull CollisionRecord record) implements WriteItem {
+        record Collision(long sequence, @NotNull CollisionRecord record) implements WriteItem {
         }
     }
 
