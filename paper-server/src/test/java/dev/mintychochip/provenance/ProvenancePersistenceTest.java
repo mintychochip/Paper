@@ -2,10 +2,15 @@ package dev.mintychochip.provenance;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -171,7 +176,7 @@ public class ProvenancePersistenceTest {
         final Path db = tempDir.resolve("mintychochip/provenance.db");
         final UUID id = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
         try (ProvenanceRepository repo = new ProvenanceRepository(db)) {
-            repo.upsertLive(new LiveRecord(id, "minecraft:diamond", "player:" + PLAYER + ":0", 4, 1_700_000_000_000L, false));
+            repo.upsertLive(new LiveRecord(id, "minecraft:diamond", "player:" + PLAYER + ":0", 4, 1_700_000_000_000L, false), 1L);
         }
         try (ProvenanceRepository repo = new ProvenanceRepository(db)) {
             final List<LiveRecord> alive = repo.loadAliveLive();
@@ -198,7 +203,7 @@ public class ProvenancePersistenceTest {
             null
         );
         try (ProvenanceRepository repo = new ProvenanceRepository(db)) {
-            repo.insertAudit(event);
+            repo.insertAudit(UUID.randomUUID(), event);
         }
         try (ProvenanceRepository repo = new ProvenanceRepository(db)) {
             final List<ProvenanceEvent> loaded = repo.loadRecentAudit(10);
@@ -319,7 +324,7 @@ public class ProvenancePersistenceTest {
         final String spillLoc = spillLocation.display();
 
         try (ProvenanceRepository repo = new ProvenanceRepository(minty.resolve("provenance.db"))) {
-            repo.upsertLive(new LiveRecord(id, "minecraft:diamond", staleLoc, 1, 100L, false));
+            repo.upsertLive(new LiveRecord(id, "minecraft:diamond", staleLoc, 1, 100L, false), 1L);
         }
 
         final ProvenanceSpillJournal journal = new ProvenanceSpillJournal(minty.resolve("provenance-spill.log"));
@@ -346,6 +351,153 @@ public class ProvenancePersistenceTest {
             assertEquals(1, alive.size());
             assertEquals(spillLoc, alive.getFirst().locationDisplay());
             assertEquals(2, alive.getFirst().count());
+        }
+    }
+
+    @Test
+    public void freshRepositoryReportsSchemaVersionTwo() throws Exception {
+        final Path db = tempDir.resolve("mintychochip/provenance.db");
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            assertEquals(2, repository.schemaVersion());
+            assertEquals(0L, repository.maxWriteSequence());
+        }
+    }
+
+    @Test
+    public void reopeningMigratesExistingSchemaAndPreservesRows() throws Exception {
+        final Path db = tempDir.resolve("mintychochip/provenance.db");
+        Files.createDirectories(db.getParent());
+        final UUID legacyId = UUID.fromString("deadbeef-0000-0000-0000-000000000001");
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + db);
+             Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE lineage (id TEXT PRIMARY KEY, item TEXT NOT NULL, source TEXT NOT NULL, parents TEXT NOT NULL, born INTEGER NOT NULL, holder TEXT, dead INTEGER NOT NULL DEFAULT 0, death_reason TEXT, death_epoch INTEGER)");
+            statement.execute("CREATE TABLE live (id TEXT PRIMARY KEY, item TEXT NOT NULL, location TEXT NOT NULL, count INTEGER NOT NULL, epoch INTEGER NOT NULL, dead INTEGER NOT NULL DEFAULT 0)");
+            statement.execute("CREATE TABLE collisions (id TEXT NOT NULL, kind TEXT NOT NULL, existing TEXT NOT NULL, observed TEXT NOT NULL, epoch INTEGER NOT NULL)");
+            statement.execute("CREATE TABLE audit (seq INTEGER PRIMARY KEY AUTOINCREMENT, epoch INTEGER NOT NULL, kind TEXT NOT NULL, id TEXT NOT NULL, item TEXT, source TEXT, reason TEXT, related TEXT, holder TEXT, detail TEXT)");
+            statement.execute("INSERT INTO lineage (id, item, source, parents, born, holder) VALUES ('" + legacyId + "', 'minecraft:stone', 'LEGACY', '', 10, 'hand')");
+            statement.execute("INSERT INTO live (id, item, location, count, epoch, dead) VALUES ('" + legacyId + "', 'minecraft:diamond', 'player:" + PLAYER + ":0', 4, 100, 0)");
+        }
+        final UUID id = UUID.randomUUID();
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            assertEquals(2, repository.schemaVersion());
+            repository.upsertLineage(new LineageNode(id, "minecraft:stone", ProvenanceSource.BLOCK_DROP, List.of(), 10L, "hand"), 1L);
+        }
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            assertEquals(2, repository.schemaVersion());
+            final LineageNode legacy = repository.loadLineage(legacyId).orElseThrow();
+            assertEquals("minecraft:stone", legacy.itemId());
+            assertEquals(ProvenanceSource.LEGACY, legacy.source());
+            final LiveRecord legacyLive = repository.loadAliveLive().getFirst();
+            assertEquals(legacyId, legacyLive.id());
+            assertEquals(4, legacyLive.count());
+            assertTrue(repository.maxWriteSequence() >= 1L);
+        }
+    }
+
+    @Test
+    public void olderLiveRevisionCannotOverwriteNewerRevision() throws Exception {
+        final Path db = tempDir.resolve("mintychochip/provenance.db");
+        final UUID id = UUID.randomUUID();
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            repository.upsertLive(new LiveRecord(id, "minecraft:diamond", "player:" + PLAYER + ":1", 1, 100L, false), 20L);
+            repository.upsertLive(new LiveRecord(id, "minecraft:diamond", "player:" + PLAYER + ":2", 4, 200L, false), 21L);
+            repository.upsertLive(new LiveRecord(id, "minecraft:diamond", "player:" + PLAYER + ":1", 1, 100L, false), 20L);
+            final LiveRecord loaded = repository.loadAliveLive().getFirst();
+            assertEquals("player:" + PLAYER + ":2", loaded.locationDisplay());
+            assertEquals(4, loaded.count());
+            assertEquals(21L, repository.maxWriteSequence());
+        }
+    }
+
+    @Test
+    public void olderLineageRevisionCannotOverwriteNewerRevision() throws Exception {
+        final Path db = tempDir.resolve("mintychochip/provenance.db");
+        final UUID id = UUID.randomUUID();
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            repository.upsertLineage(new LineageNode(id, "minecraft:stone", ProvenanceSource.BLOCK_DROP, List.of(), 10L, "hand"), 5L);
+            final LineageNode newer = new LineageNode(id, "minecraft:cobblestone", ProvenanceSource.CRAFT, List.of(), 20L, "crafting");
+            newer.markDead(ProvenanceReason.CONSUMED, 30L);
+            repository.upsertLineage(newer, 6L);
+            repository.upsertLineage(new LineageNode(id, "minecraft:stone", ProvenanceSource.BLOCK_DROP, List.of(), 10L, "hand"), 5L);
+            final LineageNode loaded = repository.loadLineage(id).orElseThrow();
+            assertEquals("minecraft:cobblestone", loaded.itemId());
+            assertTrue(loaded.dead());
+            assertEquals(ProvenanceReason.CONSUMED, loaded.deathReason());
+            assertEquals(6L, repository.maxWriteSequence());
+        }
+    }
+
+    @Test
+    public void duplicateCollisionAndAuditIdentifiersAreIdempotent() throws Exception {
+        final Path db = tempDir.resolve("mintychochip/provenance.db");
+        final UUID id = UUID.randomUUID();
+        final CollisionRecord collision = new CollisionRecord(
+            id,
+            ProvenanceCollisionKind.DUPLICATE_LOCATION,
+            HAND,
+            StackLocation.playerSlot(PLAYER, 1),
+            100L
+        );
+        final ProvenanceEvent event = new ProvenanceEvent(
+            100L,
+            ProvenanceEventType.COLLISION,
+            id,
+            "minecraft:diamond",
+            null,
+            null,
+            List.of(),
+            HAND.display(),
+            "duplicate"
+        );
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            assertTrue(repository.insertCollision(collision, "collision-key"));
+            assertFalse(repository.insertCollision(collision, "collision-key"));
+            final UUID eventId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+            repository.insertAudit(eventId, event);
+            repository.insertAudit(eventId, event);
+            assertEquals(1, repository.loadRecentCollisions(10).size());
+            assertEquals(1, repository.loadRecentAudit(10).size());
+        }
+    }
+
+    @Test
+    public void recentReadsRespectRequestedBounds() throws Exception {
+        final Path db = tempDir.resolve("mintychochip/provenance.db");
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            for (int i = 0; i < 5; i++) {
+                repository.insertAudit(UUID.randomUUID(), new ProvenanceEvent(
+                    100L + i,
+                    ProvenanceEventType.BIRTH,
+                    UUID.randomUUID(),
+                    "minecraft:diamond",
+                    null,
+                    null,
+                    List.of(),
+                    HAND.display(),
+                    null
+                ));
+            }
+            assertEquals(3, repository.loadRecentAudit(3).size());
+            assertEquals(1, repository.loadRecentAudit(0).size());
+            assertEquals(5, repository.loadRecentAudit(50_000).size());
+        }
+    }
+
+    @Test
+    public void transactionFailureRollsBackRestoresAutocommitAndPropagatesOriginal() throws Exception {
+        final Path db = tempDir.resolve("mintychochip/provenance.db");
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            final SQLException original = assertThrows(SQLException.class, () ->
+                repository.runInTransaction(r -> {
+                    r.upsertLive(new LiveRecord(UUID.randomUUID(), "minecraft:diamond", HAND.display(), 1, 100L, false), 1L);
+                    throw new SQLException("boom");
+                })
+            );
+            assertEquals("boom", original.getMessage());
+            assertTrue(repository.loadAliveLive().isEmpty());
+            final UUID id = UUID.randomUUID();
+            repository.upsertLive(new LiveRecord(id, "minecraft:diamond", HAND.display(), 4, 100L, false), 2L);
+            assertEquals(1, repository.loadAliveLive().size());
         }
     }
 }

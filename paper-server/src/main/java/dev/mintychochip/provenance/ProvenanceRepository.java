@@ -23,15 +23,363 @@ import org.jetbrains.annotations.NotNull;
  */
 public final class ProvenanceRepository implements AutoCloseable {
 
+    private static final int SCHEMA_VERSION = 2;
+
     private final Connection connection;
     private volatile boolean failed;
 
     public ProvenanceRepository(final @NotNull java.nio.file.Path dbPath) throws SQLException {
         Objects.requireNonNull(dbPath, "dbPath");
-        dbPath.toFile().getParentFile().mkdirs();
-        this.connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+        final java.io.File parent = dbPath.toFile().getParentFile();
+        if (parent != null) {
+            parent.mkdirs();
+        }
+        final Connection opened = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+        this.connection = opened;
+        try {
+            this.applyStartupPragmas();
+            this.migrateSchema();
+        } catch (final SQLException ex) {
+            try {
+                opened.close();
+            } catch (final SQLException ignored) {
+                ex.addSuppressed(ignored);
+            }
+            throw ex;
+        } catch (final RuntimeException ex) {
+            try {
+                opened.close();
+            } catch (final SQLException ignored) {
+                ex.addSuppressed(ignored);
+            }
+            throw ex;
+        }
+    }
+
+    public boolean isFailed() {
+        return this.failed;
+    }
+
+    /** Mark the connection unusable after a writer-observed storage failure. */
+    synchronized void markFailed() {
+        this.failed = true;
+    }
+
+    public synchronized void upsertLineage(final @NotNull LineageNode node, final long sequence) throws SQLException {
+        final String sql = """
+            INSERT INTO lineage (id, item, source, parents, born, holder, dead, death_reason, death_epoch, updated_seq)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                item = excluded.item,
+                source = excluded.source,
+                parents = excluded.parents,
+                born = excluded.born,
+                holder = excluded.holder,
+                dead = excluded.dead,
+                death_reason = excluded.death_reason,
+                death_epoch = excluded.death_epoch,
+                updated_seq = excluded.updated_seq
+            WHERE excluded.updated_seq > lineage.updated_seq
+            """;
+        try (PreparedStatement ps = this.connection.prepareStatement(sql)) {
+            ps.setString(1, node.id().toString());
+            ps.setString(2, node.itemId());
+            ps.setString(3, node.source().name());
+            ps.setString(4, node.parents().stream().map(UUID::toString).collect(Collectors.joining(",")));
+            ps.setLong(5, node.bornEpochMs());
+            ps.setString(6, node.bornHolder());
+            ps.setInt(7, node.dead() ? 1 : 0);
+            ps.setString(8, node.dead() ? node.deathReason().name() : null);
+            ps.setLong(9, node.dead() ? node.deathEpochMs() : 0L);
+            ps.setLong(10, sequence);
+            ps.executeUpdate();
+        }
+    }
+
+    public synchronized @NotNull Optional<LineageNode> loadLineage(final @NotNull UUID id) {
+        if (this.failed) {
+            return Optional.empty();
+        }
+        try (PreparedStatement ps = this.connection.prepareStatement(
+            "SELECT item, source, parents, born, holder, dead, death_reason, death_epoch FROM lineage WHERE id = ?"
+        )) {
+            ps.setString(1, id.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(toNode(id, rs));
+            }
+        } catch (final SQLException ex) {
+            this.failed = true;
+            ProvenanceWriter.reportStorageError("lineage load", ex);
+            return Optional.empty();
+        }
+    }
+
+    public synchronized boolean insertCollision(
+        final @NotNull CollisionRecord record,
+        final @NotNull String dedupeKey
+    ) throws SQLException {
+        try (PreparedStatement ps = this.connection.prepareStatement(
+            "INSERT OR IGNORE INTO collisions (id, kind, existing, observed, epoch, dedupe_key) VALUES (?, ?, ?, ?, ?, ?)"
+        )) {
+            ps.setString(1, record.id().toString());
+            ps.setString(2, record.kind().name());
+            ps.setString(3, record.existingLocation().display());
+            ps.setString(4, record.observedLocation().display());
+            ps.setLong(5, record.epochMs());
+            ps.setString(6, dedupeKey);
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+    public synchronized @NotNull List<CollisionRecord> loadRecentCollisions(final int limit) {
+        if (this.failed) {
+            return List.of();
+        }
+        final List<CollisionRecord> out = new ArrayList<>();
+        try (PreparedStatement ps = this.connection.prepareStatement(
+            "SELECT id, kind, existing, observed, epoch FROM collisions ORDER BY epoch DESC LIMIT ?"
+        )) {
+            ps.setInt(1, Math.max(1, Math.min(limit, 10_000)));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(new CollisionRecord(
+                        UUID.fromString(rs.getString("id")),
+                        ProvenanceCollisionKind.valueOf(rs.getString("kind")),
+                        parseLocationDisplay(rs.getString("existing")),
+                        parseLocationDisplay(rs.getString("observed")),
+                        rs.getLong("epoch")
+                    ));
+                }
+            }
+        } catch (final SQLException | IllegalArgumentException ex) {
+            this.failed = true;
+            ProvenanceWriter.reportStorageError("collision load", ex);
+        }
+        return out;
+    }
+
+    public synchronized void upsertLive(final @NotNull LiveRecord record, final long sequence) throws SQLException {
+        final String sql = """
+            INSERT INTO live (id, item, location, count, epoch, updated_seq, dead)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                item = excluded.item,
+                location = excluded.location,
+                count = excluded.count,
+                epoch = excluded.epoch,
+                updated_seq = excluded.updated_seq,
+                dead = excluded.dead
+            WHERE excluded.updated_seq > live.updated_seq
+            """;
+        try (PreparedStatement ps = this.connection.prepareStatement(sql)) {
+            ps.setString(1, record.id().toString());
+            ps.setString(2, record.itemId());
+            ps.setString(3, record.locationDisplay());
+            ps.setInt(4, record.count());
+            ps.setLong(5, record.epochMs());
+            ps.setLong(6, sequence);
+            ps.setInt(7, record.dead() ? 1 : 0);
+            ps.executeUpdate();
+        }
+    }
+
+    public synchronized @NotNull List<LiveRecord> loadAliveLive() {
+        if (this.failed) {
+            return List.of();
+        }
+        final List<LiveRecord> out = new ArrayList<>();
+        try (PreparedStatement ps = this.connection.prepareStatement(
+            "SELECT id, item, location, count, epoch, dead FROM live WHERE dead = 0"
+        )) {
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(new LiveRecord(
+                        UUID.fromString(rs.getString("id")),
+                        rs.getString("item"),
+                        rs.getString("location"),
+                        rs.getInt("count"),
+                        rs.getLong("epoch"),
+                        rs.getInt("dead") != 0
+                    ));
+                }
+            }
+        } catch (final SQLException | IllegalArgumentException ex) {
+            this.failed = true;
+            ProvenanceWriter.reportStorageError("live load", ex);
+        }
+        return out;
+    }
+
+    public synchronized boolean insertAudit(
+        final @NotNull UUID eventId,
+        final @NotNull ProvenanceEvent event
+    ) throws SQLException {
+        try (PreparedStatement ps = this.connection.prepareStatement(
+            "INSERT OR IGNORE INTO audit (epoch, kind, id, item, source, reason, related, holder, detail, event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        )) {
+            ps.setLong(1, event.epochMs());
+            ps.setString(2, event.type().name());
+            ps.setString(3, event.id().toString());
+            ps.setString(4, event.itemId());
+            ps.setString(5, event.source() != null ? event.source().name() : null);
+            ps.setString(6, event.reason() != null ? event.reason().name() : null);
+            ps.setString(7, event.related().isEmpty()
+                ? null
+                : event.related().stream().map(UUID::toString).collect(Collectors.joining(",")));
+            ps.setString(8, event.holder());
+            ps.setString(9, event.detail());
+            ps.setString(10, eventId.toString());
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+    public synchronized @NotNull List<ProvenanceEvent> loadRecentAudit(final int limit) {
+        if (this.failed) {
+            return List.of();
+        }
+        final List<ProvenanceEvent> out = new ArrayList<>();
+        try (PreparedStatement ps = this.connection.prepareStatement(
+            "SELECT epoch, kind, id, item, source, reason, related, holder, detail FROM audit ORDER BY seq DESC LIMIT ?"
+        )) {
+            ps.setInt(1, Math.max(1, Math.min(limit, 10_000)));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(toEvent(rs));
+                }
+            }
+        } catch (final SQLException | IllegalArgumentException ex) {
+            this.failed = true;
+            ProvenanceWriter.reportStorageError("audit load", ex);
+        }
+        return out;
+    }
+
+    /** Return the current user_version, or zero when the read fails. */
+    public synchronized int schemaVersion() {
+        if (this.failed) {
+            return 0;
+        }
+        try {
+            return this.queryUserVersion();
+        } catch (final SQLException ex) {
+            this.failed = true;
+            ProvenanceWriter.reportStorageError("schema version load", ex);
+            return 0;
+        }
+    }
+
+    /** Return the highest durable lineage/live write sequence, or zero when empty. */
+    public synchronized long maxWriteSequence() {
+        if (this.failed) {
+            return 0L;
+        }
+        try (PreparedStatement ps = this.connection.prepareStatement(
+            "SELECT MAX(updated_seq) FROM (SELECT updated_seq FROM lineage UNION ALL SELECT updated_seq FROM live)"
+        ); ResultSet rs = ps.executeQuery()) {
+            return rs.next() ? rs.getLong(1) : 0L;
+        } catch (final SQLException ex) {
+            this.failed = true;
+            ProvenanceWriter.reportStorageError("max write sequence load", ex);
+            return 0L;
+        }
+    }
+
+    /** Row count for tests / ops (`SELECT COUNT(*) FROM lineage`). */
+    public synchronized long countLineage() {
+        if (this.failed) {
+            return 0L;
+        }
+        try (PreparedStatement ps = this.connection.prepareStatement("SELECT COUNT(*) FROM lineage");
+             ResultSet rs = ps.executeQuery()) {
+            return rs.next() ? rs.getLong(1) : 0L;
+        } catch (final SQLException ex) {
+            this.failed = true;
+            ProvenanceWriter.reportStorageError("lineage count", ex);
+            return 0L;
+        }
+    }
+
+    @FunctionalInterface
+    public interface RepositoryWork {
+        void accept(@NotNull ProvenanceRepository repository) throws SQLException;
+    }
+
+    /**
+     * Run work inside a single SQLite transaction (writer-thread batching).
+     * Nested calls reuse the outer transaction.
+     */
+    public synchronized void runInTransaction(final @NotNull RepositoryWork work) throws SQLException {
+        Objects.requireNonNull(work, "work");
+        if (!this.connection.getAutoCommit()) {
+            work.accept(this);
+            return;
+        }
+        this.connection.setAutoCommit(false);
+        try {
+            work.accept(this);
+            this.connection.commit();
+        } catch (final SQLException | RuntimeException ex) {
+            try {
+                this.connection.rollback();
+            } catch (final SQLException rollbackFailure) {
+                ex.addSuppressed(rollbackFailure);
+            }
+            throw ex;
+        } finally {
+            try {
+                this.connection.setAutoCommit(true);
+            } catch (final SQLException ex) {
+                this.failed = true;
+                ProvenanceWriter.reportStorageError("transaction restore autocommit", ex);
+            }
+        }
+    }
+
+    private void applyStartupPragmas() throws SQLException {
         try (Statement st = this.connection.createStatement()) {
             st.execute("PRAGMA journal_mode=WAL");
+            st.execute("PRAGMA synchronous=FULL");
+            st.execute("PRAGMA foreign_keys=ON");
+            st.execute("PRAGMA busy_timeout=5000");
+        }
+    }
+
+    private void migrateSchema() throws SQLException {
+        final int version = this.queryUserVersion();
+        if (version >= SCHEMA_VERSION) {
+            return;
+        }
+        this.connection.setAutoCommit(false);
+        try {
+            if (version < 1) {
+                this.createSchemaV1();
+            }
+            if (version < 2) {
+                this.migrateToV2();
+            }
+            this.setUserVersion(SCHEMA_VERSION);
+            this.connection.commit();
+        } catch (final SQLException | RuntimeException ex) {
+            try {
+                this.connection.rollback();
+            } catch (final SQLException rollbackFailure) {
+                ex.addSuppressed(rollbackFailure);
+            }
+            throw ex;
+        } finally {
+            try {
+                this.connection.setAutoCommit(true);
+            } catch (final SQLException restoreFailure) {
+                exReport("schema migration restore autocommit", restoreFailure);
+            }
+        }
+    }
+
+    private void createSchemaV1() throws SQLException {
+        try (Statement st = this.connection.createStatement()) {
             st.execute("""
                 CREATE TABLE IF NOT EXISTS lineage (
                     id TEXT PRIMARY KEY,
@@ -83,266 +431,31 @@ public final class ProvenanceRepository implements AutoCloseable {
         }
     }
 
-    public boolean isFailed() {
-        return this.failed;
-    }
-
-    public synchronized void upsertLineage(final @NotNull LineageNode node) {
-        if (this.failed) {
-            return;
-        }
-        final String sql = """
-            INSERT INTO lineage (id, item, source, parents, born, holder, dead, death_reason, death_epoch)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                item = excluded.item,
-                source = excluded.source,
-                parents = excluded.parents,
-                born = excluded.born,
-                holder = excluded.holder,
-                dead = excluded.dead,
-                death_reason = excluded.death_reason,
-                death_epoch = excluded.death_epoch
-            """;
-        try (PreparedStatement ps = this.connection.prepareStatement(sql)) {
-            ps.setString(1, node.id().toString());
-            ps.setString(2, node.itemId());
-            ps.setString(3, node.source().name());
-            ps.setString(4, node.parents().stream().map(UUID::toString).collect(Collectors.joining(",")));
-            ps.setLong(5, node.bornEpochMs());
-            ps.setString(6, node.bornHolder());
-            ps.setInt(7, node.dead() ? 1 : 0);
-            ps.setString(8, node.dead() ? node.deathReason().name() : null);
-            ps.setLong(9, node.dead() ? node.deathEpochMs() : 0L);
-            ps.executeUpdate();
-        } catch (final SQLException ex) {
-            this.failed = true;
-            ProvenanceWriter.reportStorageError("lineage upsert", ex);
+    private void migrateToV2() throws SQLException {
+        try (Statement st = this.connection.createStatement()) {
+            st.execute("ALTER TABLE lineage ADD COLUMN updated_seq INTEGER NOT NULL DEFAULT 0");
+            st.execute("ALTER TABLE live ADD COLUMN updated_seq INTEGER NOT NULL DEFAULT 0");
+            st.execute("ALTER TABLE collisions ADD COLUMN dedupe_key TEXT NOT NULL DEFAULT ''");
+            st.execute("ALTER TABLE audit ADD COLUMN event_id TEXT NOT NULL DEFAULT ''");
+            st.execute("UPDATE lineage SET updated_seq = rowid");
+            st.execute("UPDATE live SET updated_seq = rowid");
+            st.execute("UPDATE collisions SET dedupe_key = 'legacy:' || rowid");
+            st.execute("UPDATE audit SET event_id = 'legacy:' || seq");
+            st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_collisions_dedupe_key ON collisions(dedupe_key)");
+            st.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_event_id ON audit(event_id)");
         }
     }
 
-    public synchronized @NotNull Optional<LineageNode> loadLineage(final @NotNull UUID id) {
-        if (this.failed) {
-            return Optional.empty();
-        }
-        try (PreparedStatement ps = this.connection.prepareStatement(
-            "SELECT item, source, parents, born, holder, dead, death_reason, death_epoch FROM lineage WHERE id = ?"
-        )) {
-            ps.setString(1, id.toString());
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    return Optional.empty();
-                }
-                return Optional.of(toNode(id, rs));
-            }
-        } catch (final SQLException ex) {
-            this.failed = true;
-            ProvenanceWriter.reportStorageError("lineage load", ex);
-            return Optional.empty();
+    private int queryUserVersion() throws SQLException {
+        try (Statement st = this.connection.createStatement();
+             ResultSet rs = st.executeQuery("PRAGMA user_version")) {
+            return rs.next() ? rs.getInt(1) : 0;
         }
     }
 
-    public synchronized void insertCollision(final @NotNull CollisionRecord record) {
-        if (this.failed) {
-            return;
-        }
-        try (PreparedStatement ps = this.connection.prepareStatement(
-            "INSERT INTO collisions (id, kind, existing, observed, epoch) VALUES (?, ?, ?, ?, ?)"
-        )) {
-            ps.setString(1, record.id().toString());
-            ps.setString(2, record.kind().name());
-            ps.setString(3, record.existingLocation().display());
-            ps.setString(4, record.observedLocation().display());
-            ps.setLong(5, record.epochMs());
-            ps.executeUpdate();
-        } catch (final SQLException ex) {
-            this.failed = true;
-            ProvenanceWriter.reportStorageError("collision insert", ex);
-        }
-    }
-
-    public synchronized @NotNull List<CollisionRecord> loadRecentCollisions(final int limit) {
-        if (this.failed) {
-            return List.of();
-        }
-        final List<CollisionRecord> out = new ArrayList<>();
-        try (PreparedStatement ps = this.connection.prepareStatement(
-            "SELECT id, kind, existing, observed, epoch FROM collisions ORDER BY epoch DESC LIMIT ?"
-        )) {
-            ps.setInt(1, Math.max(1, Math.min(limit, 10_000)));
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    out.add(new CollisionRecord(
-                        UUID.fromString(rs.getString("id")),
-                        ProvenanceCollisionKind.valueOf(rs.getString("kind")),
-                        parseLocationDisplay(rs.getString("existing")),
-                        parseLocationDisplay(rs.getString("observed")),
-                        rs.getLong("epoch")
-                    ));
-                }
-            }
-        } catch (final SQLException | IllegalArgumentException ex) {
-            this.failed = true;
-            ProvenanceWriter.reportStorageError("collision load", ex);
-        }
-        return out;
-    }
-
-    public synchronized void upsertLive(final @NotNull LiveRecord record) {
-        if (this.failed) {
-            return;
-        }
-        final String sql = """
-            INSERT INTO live (id, item, location, count, epoch, dead)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                item = excluded.item,
-                location = excluded.location,
-                count = excluded.count,
-                epoch = excluded.epoch,
-                dead = excluded.dead
-            """;
-        try (PreparedStatement ps = this.connection.prepareStatement(sql)) {
-            ps.setString(1, record.id().toString());
-            ps.setString(2, record.itemId());
-            ps.setString(3, record.locationDisplay());
-            ps.setInt(4, record.count());
-            ps.setLong(5, record.epochMs());
-            ps.setInt(6, record.dead() ? 1 : 0);
-            ps.executeUpdate();
-        } catch (final SQLException ex) {
-            this.failed = true;
-            ProvenanceWriter.reportStorageError("live upsert", ex);
-        }
-    }
-
-    public synchronized @NotNull List<LiveRecord> loadAliveLive() {
-        if (this.failed) {
-            return List.of();
-        }
-        final List<LiveRecord> out = new ArrayList<>();
-        try (PreparedStatement ps = this.connection.prepareStatement(
-            "SELECT id, item, location, count, epoch, dead FROM live WHERE dead = 0"
-        )) {
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    out.add(new LiveRecord(
-                        UUID.fromString(rs.getString("id")),
-                        rs.getString("item"),
-                        rs.getString("location"),
-                        rs.getInt("count"),
-                        rs.getLong("epoch"),
-                        rs.getInt("dead") != 0
-                    ));
-                }
-            }
-        } catch (final SQLException | IllegalArgumentException ex) {
-            this.failed = true;
-            ProvenanceWriter.reportStorageError("live load", ex);
-        }
-        return out;
-    }
-
-    public synchronized void insertAudit(final @NotNull ProvenanceEvent event) {
-        if (this.failed) {
-            return;
-        }
-        try (PreparedStatement ps = this.connection.prepareStatement(
-            "INSERT INTO audit (epoch, kind, id, item, source, reason, related, holder, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        )) {
-            ps.setLong(1, event.epochMs());
-            ps.setString(2, event.type().name());
-            ps.setString(3, event.id().toString());
-            ps.setString(4, event.itemId());
-            ps.setString(5, event.source() != null ? event.source().name() : null);
-            ps.setString(6, event.reason() != null ? event.reason().name() : null);
-            ps.setString(7, event.related().isEmpty()
-                ? null
-                : event.related().stream().map(UUID::toString).collect(Collectors.joining(",")));
-            ps.setString(8, event.holder());
-            ps.setString(9, event.detail());
-            ps.executeUpdate();
-        } catch (final SQLException ex) {
-            this.failed = true;
-            ProvenanceWriter.reportStorageError("audit insert", ex);
-        }
-    }
-
-    public synchronized @NotNull List<ProvenanceEvent> loadRecentAudit(final int limit) {
-        if (this.failed) {
-            return List.of();
-        }
-        final List<ProvenanceEvent> out = new ArrayList<>();
-        try (PreparedStatement ps = this.connection.prepareStatement(
-            "SELECT epoch, kind, id, item, source, reason, related, holder, detail FROM audit ORDER BY seq DESC LIMIT ?"
-        )) {
-            ps.setInt(1, Math.max(1, Math.min(limit, 10_000)));
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    out.add(toEvent(rs));
-                }
-            }
-        } catch (final SQLException | IllegalArgumentException ex) {
-            this.failed = true;
-            ProvenanceWriter.reportStorageError("audit load", ex);
-        }
-        return out;
-    }
-
-    /** Row count for tests / ops (`SELECT COUNT(*) FROM lineage`). */
-    public synchronized long countLineage() {
-        if (this.failed) {
-            return 0L;
-        }
-        try (PreparedStatement ps = this.connection.prepareStatement("SELECT COUNT(*) FROM lineage");
-             ResultSet rs = ps.executeQuery()) {
-            return rs.next() ? rs.getLong(1) : 0L;
-        } catch (final SQLException ex) {
-            this.failed = true;
-            ProvenanceWriter.reportStorageError("lineage count", ex);
-            return 0L;
-        }
-    }
-
-    /**
-     * Run work inside a single SQLite transaction (writer-thread batching).
-     * Nested calls reuse the outer transaction.
-     */
-    public synchronized void runInTransaction(final @NotNull Runnable work) {
-        Objects.requireNonNull(work, "work");
-        if (this.failed) {
-            work.run();
-            return;
-        }
-        try {
-            final boolean wasAuto = this.connection.getAutoCommit();
-            if (!wasAuto) {
-                work.run();
-                return;
-            }
-            this.connection.setAutoCommit(false);
-            try {
-                work.run();
-                this.connection.commit();
-            } catch (final RuntimeException ex) {
-                try {
-                    this.connection.rollback();
-                } catch (final SQLException ignored) {
-                    // already failing
-                }
-                throw ex;
-            } finally {
-                try {
-                    this.connection.setAutoCommit(true);
-                } catch (final SQLException ex) {
-                    this.failed = true;
-                    ProvenanceWriter.reportStorageError("transaction restore autocommit", ex);
-                }
-            }
-        } catch (final SQLException ex) {
-            this.failed = true;
-            ProvenanceWriter.reportStorageError("transaction begin", ex);
-            work.run();
+    private void setUserVersion(final int version) throws SQLException {
+        try (Statement st = this.connection.createStatement()) {
+            st.execute("PRAGMA user_version = " + version);
         }
     }
 
@@ -424,6 +537,11 @@ public final class ProvenanceRepository implements AutoCloseable {
             return StackLocation.unknown();
         }
         return StackLocation.labeled(raw);
+    }
+
+    private void exReport(final String context, final SQLException ex) {
+        this.failed = true;
+        ProvenanceWriter.reportStorageError(context, ex);
     }
 
     @Override
