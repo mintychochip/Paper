@@ -3666,8 +3666,4 @@ public enum VanillaMaterial implements Material {
         return true;
     }
 
-    @Override
-    public boolean isCustom() {
-        return false;
-    }
 }

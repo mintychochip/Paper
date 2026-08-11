@@ -21,15 +21,13 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * A material identity (block and/or item) accepted by Bukkit APIs.
+ * A vanilla material identity (block and/or item) accepted by Bukkit APIs.
  *
  * <p>Vanilla types are the constants on this interface (e.g. {@link #STONE}); they are instances of
- * {@link VanillaMaterial}. Custom types ({@link dev.mintychochip.customblock.CustomBlockDefinition})
- * implement this interface so they can be used anywhere a {@code Material} is accepted.
+ * {@link VanillaMaterial}.
  *
- * <p>{@link org.bukkit.block.Block#getType()} / {@link org.bukkit.inventory.ItemStack#getType()} return
- * the <strong>carrier</strong> vanilla material for custom blocks/items; use
- * {@code getCustomBlock()} / {@code getCustomKey()} for logical custom identity.
+ * <p>The interface preserves the source-compatible static constant and lookup surface while the
+ * concrete values remain in {@link VanillaMaterial}.
  */
 @SuppressWarnings({"DeprecatedIsStillUsed", "deprecation"}) // Paper
 public interface Material extends Keyed, Translatable, net.kyori.adventure.translation.Translatable {
@@ -3223,7 +3221,6 @@ public interface Material extends Keyed, Translatable, net.kyori.adventure.trans
 
     /**
      * Enum-style constant name for vanilla types (e.g. {@code "STONE"}).
-     * Custom types return {@link #getKey()} as a string.
      *
      * <p>Source-compatible with former {@code Enum#name()}.
      */
@@ -3234,11 +3231,6 @@ public interface Material extends Keyed, Translatable, net.kyori.adventure.trans
      * {@code true} when this is a vanilla Minecraft material constant.
      */
     boolean isVanilla();
-
-    /**
-     * {@code true} when this is a registered custom material (not a vanilla constant).
-     */
-    boolean isCustom();
 
     // ---- static lookup (compat with former enum statics) ----
 
@@ -3337,7 +3329,7 @@ public interface Material extends Keyed, Translatable, net.kyori.adventure.trans
     static Material matchMaterial(@NotNull final String name, boolean legacyName) {
         Preconditions.checkArgument(name != null, "Name cannot be null");
 
-        // Namespaced key path — custom catalog via getByKey, then vanilla
+        // Namespaced key path — native registry lookup
         if (name.indexOf(':') >= 0) {
             final NamespacedKey key = NamespacedKey.fromString(name);
             if (key != null) {
@@ -3358,41 +3350,29 @@ public interface Material extends Keyed, Translatable, net.kyori.adventure.trans
     }
 
     /**
-     * Resolve any material (vanilla or mintychochip custom catalog) by key.
+     * Resolve a vanilla material by its namespaced key.
      *
-     * <p>Custom catalog is checked first so registered
-     * {@link dev.mintychochip.customblock.CustomBlockDefinition}s resolve without full
-     * {@link Registry} bootstrap. Then {@link Registry#MATERIAL} (vanilla non-legacy +
-     * same customs). On registry miss / bootstrap failure, falls back to vanilla name
-     * lookup for the {@code minecraft} namespace only.
+     * <p>Registry lookup is attempted first. On registry miss or bootstrap failure, only the
+     * {@code minecraft} namespace falls back to the generated vanilla name map.
      */
     @NotNull
     static Optional<Material> getByKey(@Nullable final NamespacedKey key) {
         if (key == null) {
             return Optional.empty();
         }
-        // Custom first — works without Registry clinit (API unit tests / early bootstrap)
-        final Optional<dev.mintychochip.customblock.CustomBlockDefinition> custom =
-            dev.mintychochip.customblock.CustomBlocks.get(key);
-        if (custom.isPresent()) {
-            return Optional.of(custom.get());
-        }
         try {
-            final Material reg = Registry.MATERIAL.get(key);
-            if (reg != null) {
-                return Optional.of(reg);
+            final Material registryValue = Registry.MATERIAL.get(key);
+            if (registryValue != null) {
+                return Optional.of(registryValue);
             }
-            // Registry miss: only path-fallback for minecraft namespace (mirror EntityType)
             if (!NamespacedKey.MINECRAFT.equals(key.getNamespace())) {
                 return Optional.empty();
             }
         } catch (final Throwable ignored) {
-            // bootstrap — byName only for minecraft path
             if (!NamespacedKey.MINECRAFT.equals(key.getNamespace())) {
                 return Optional.empty();
             }
         }
-        final VanillaMaterial byName = VanillaMaterial.byName(key.getKey().toUpperCase(Locale.ROOT));
-        return Optional.ofNullable(byName);
+        return Optional.ofNullable(VanillaMaterial.byName(key.getKey().toUpperCase(Locale.ROOT)));
     }
 }

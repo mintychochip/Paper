@@ -1,21 +1,6 @@
 --- a/net/minecraft/world/level/block/CropBlock.java
 +++ b/net/minecraft/world/level/block/CropBlock.java
-@@ -72,25 +_,65 @@
- 
-     @Override
-     protected boolean isRandomlyTicking(final BlockState state) {
--        return !this.isMaxAge(state);
-+        // mintychochip - keep max-age crops scheduled so custom plants can claim random ticks; native growth still exits at its age guard
-+        return true;
-     }
- 
-     @Override
-     protected void randomTick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
-+        // mintychochip start - custom plant behavior
-+        if (dev.mintychochip.customblock.CustomPlantLifecycle.handleRandomTick(level, pos, state, random)) {
-+            return;
-+        }
-+        // mintychochip end - custom plant behavior
+@@ -80,17 +_,44 @@
          if (level.getRawBrightness(pos, 0) >= 9) {
              int age = this.getAge(state);
              if (age < this.getMaxAge()) {
@@ -52,13 +37,6 @@
      }
  
      public void growCrops(final Level level, final BlockPos pos, final BlockState state) {
-+        // mintychochip start - custom plant behavior
-+        if (level instanceof ServerLevel serverLevel
-+            && dev.mintychochip.customblock.CustomPlantLifecycle.handleBonemeal(
-+                serverLevel, pos, state, level.getRandom())) {
-+            return;
-+        }
-+        // mintychochip end - custom plant behavior
 +        // mintychochip start - climate/humidity crop ecology
 +        if (!dev.mintychochip.ecology.CropEcology.allowsForcedGrowth(level, pos, this)) {
 +            return;

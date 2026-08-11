@@ -114,26 +114,6 @@ public class MaterialRerouting {
         return material;
     }
 
-    public static Material material(
-        final dev.mintychochip.behavior.BlockDataView view,
-        @InjectPluginVersion final ApiVersion version
-    ) {
-        return MaterialRerouting.transformFromBlockType(view.material(), version);
-    }
-
-    public static Material carrierType(
-        final dev.mintychochip.behavior.BlockView view,
-        @InjectPluginVersion final ApiVersion version
-    ) {
-        return MaterialRerouting.transformFromBlockType(view.carrierType(), version);
-    }
-
-    public static Material type(
-        final dev.mintychochip.behavior.ItemStackView view,
-        @InjectPluginVersion final ApiVersion version
-    ) {
-        return MaterialRerouting.transformFromItemType(view.type(), version);
-    }
 
     public static Material getMaterial(BlockData blockData, @InjectPluginVersion ApiVersion version) {
         return MaterialRerouting.transformFromBlockType(blockData.getMaterial(), version);

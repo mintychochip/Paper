@@ -114,8 +114,6 @@ public final class CraftMagicNumbers implements UnsafeValues {
     }
 
     public static BlockState getBlock(Material material, byte data) {
-        Preconditions.checkArgument(material == null || !material.isCustom(),
-            "material %s is catalog-backed and has no native NMS block", material == null ? null : material.getKey());
         return CraftLegacy.fromLegacyData(CraftLegacy.toLegacy(material), data);
     }
 
@@ -124,8 +122,6 @@ public final class CraftMagicNumbers implements UnsafeValues {
     }
 
     public static Item getItem(Material material, short data) {
-        Preconditions.checkArgument(material == null || !material.isCustom(),
-            "material %s is catalog-backed and has no native NMS item", material == null ? null : material.getKey());
         if (material.isLegacy()) {
             return CraftLegacy.fromLegacyData(CraftLegacy.toLegacy(material), data);
         }
@@ -176,8 +172,6 @@ public final class CraftMagicNumbers implements UnsafeValues {
     }
 
     public static Item getItem(Material material) {
-        Preconditions.checkArgument(material == null || !material.isCustom(),
-            "material %s is catalog-backed and has no native NMS item", material == null ? null : material.getKey());
         if (material != null && material.isLegacy()) {
             material = CraftLegacy.fromLegacy(material);
         }
@@ -186,8 +180,6 @@ public final class CraftMagicNumbers implements UnsafeValues {
     }
 
     public static Block getBlock(Material material) {
-        Preconditions.checkArgument(material == null || !material.isCustom(),
-            "material %s is catalog-backed and has no native NMS block", material == null ? null : material.getKey());
         if (material != null && material.isLegacy()) {
             material = CraftLegacy.fromLegacy(material);
         }

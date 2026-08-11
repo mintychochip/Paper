@@ -160,7 +160,7 @@ public class TimingHistory {
                                     entry -> {
                                         tileEntityTypeSet.add(entry.getKey());
                                         return pair(
-                                            // Material is an interface (not enum) after custom-block work
+                                            // Material is an interface.
                                             String.valueOf(entry.getKey().getKey()),
                                             entry.getValue().count()
                                         );
@@ -214,7 +214,7 @@ public class TimingHistory {
         ));
         @SuppressWarnings("unchecked")
         final Map<Material, Counter> tileEntityCounts = MRUMapCache.of(LoadingMap.of(
-                // Material is an interface (not enum) after custom-block work
+                // Material is an interface.
                 new java.util.HashMap<Material, Counter>(), k -> new Counter()
         ));
 

@@ -19,7 +19,6 @@ Current systems:
 | **Seasons** | `dev.mintychochip.season` | alkahest-api (+ thin NMS hooks) | Wall-clock seasons; temperature swing; winter snow via forced rain |
 | **Ecology** | `dev.mintychochip.ecology` | alkahest-api (pure) + paper-server NMS façade + thin hooks | Climate/humidity crop suitability; growth gating; unsuitable plant pop |
 | **Genetics** | `dev.mintychochip.genetics` | alkahest-api (pure engine + DTOs); server wiring later | Recombination breeding, sex-linked traits, point mutations |
-| **Custom blocks** | `dev.mintychochip.customblock` | alkahest-api (definitions); server place/break later | Multi-host custom blocks: chorus / mushroom / tripwire baked + packet displays |
 | **Provenance** | `dev.mintychochip.provenance` | alkahest-api (DTOs) + paper-server engine + thin NMS hooks | Stack UUID + birth/death/lineage; craft parents; dupe COLLISION |
 
 Future custom work should continue under `dev.mintychochip.<feature>` unless it is a pure upstream-style fix.
@@ -301,44 +300,6 @@ Design: meiosis + linkage + X/Y/maternal inheritance + germline point mutations 
 
 Spec: `docs/superpowers/specs/2026-08-07-genetics-core-design.md`
 
-### Custom blocks — `dev.mintychochip.customblock` (API definitions)
-
-**API** (`alkahest-api/src/main/java/dev/mintychochip/customblock/`): pure definitions + catalog (no NMS).
-
-| Class | Role |
-|-------|------|
-| `BlockHostType` | `CHORUS`, `MUSHROOM`, `TRIPWIRE` (baked), `PACKET` (client item displays) |
-| `HostSpec` + `*HostSpec` | Sealed host params (state index, mushroom variant, packet transforms) |
-| `CustomBlockDefinition` | Keyed definition: host + item + display + {@link BlockFeel} |
-| `BlockFeel` | Hardness, blast resistance, preferred tool (often {@code emulate(Material)}) |
-| `CustomBlockCatalog` / `CustomBlocks` | Register / lookup / `of(Block\|ItemStack)` / `createItemStack` |
-| `CustomBlockItemTags` | PDC stamp for held form (`mintychochip:custom_block`) |
-| `CustomBlockLookup` | World placement identity (server installs impl) |
-
-**Additive Bukkit surface** (does not change `getType()`):
-
-- `Block#getCustomKey()` / `getCustomBlock()` / `isCustomBlock()`
-- `ItemStack#getCustomKey()` / `getCustomBlock()` / `isCustomBlockItem()`
-
-**Server** (`paper-server/.../customblock/`):
-
-| Class | Role |
-|-------|------|
-| `MemoryCustomBlockLookup` | In-memory `location → key` (not persisted yet) |
-| `CustomBlockBootstrap` | Installs lookup + registers listeners at `POSTWORLD` |
-| `CustomBlockListener` | Bukkit place / break / piston / explode |
-| `CustomBlockLifecycle` | Carrier apply, tool-gated drops, identity clear |
-| `CustomBlockMining` | Dig progress + blast resistance (NMS helpers for thin hooks) |
-| `CustomBlockPlacement` | Host → carrier material (`GLASS`, `CHORUS_PLANT`, mushroom, `TRIPWIRE`) |
-| `MintyInternalPlugin` | Minimal enabled plugin handle for `registerEvents` |
-| `pack/*` | Auto resource-pack host + join delivery (`resource-pack.json`) |
-
-Design: identity is `NamespacedKey`; host chooses how the client sees it. `getType()` remains vanilla carrier/base. Place/break use normal Bukkit events; custom drops via stamped item. Pack auto-served on join (HTTP port 8765 by default).
-
-**Tests:** `./gradlew :alkahest-api:test --tests 'dev.mintychochip.customblock.*'`
-
-Spec: `docs/superpowers/specs/2026-08-07-custom-block-definition-design.md`
-
 ### Provenance — `dev.mintychochip.provenance` (item identity + dupe detect)
 
 **API** (`alkahest-api/.../provenance/`): pure enums/DTOs (`ProvenanceSource`, `LineageNode`, `ProvenanceEvent`, …).
@@ -377,11 +338,11 @@ Requires **JDK 25** (see `CONTRIBUTING.md` / Gradle toolchains).
 ```bash
 ./gradlew :alkahest-api:test --tests 'dev.mintychochip.season.*'
 ./gradlew :alkahest-api:test --tests 'dev.mintychochip.ecology.*'
-./gradlew :alkahest-api:test --tests 'dev.mintychochip.customblock.*'
 ./gradlew :paper-server:test --tests 'dev.mintychochip.*'
 ```
 
 Local server workdir is typically `run/`. Do not commit worlds, heap dumps, or logs.
+Old custom-block SavedData, PDC, and resource-pack files in the ignored `run/` workdir are orphaned data after custom-block removal. They are ignored and not migrated.
 
 **Note:** Editing only `dev.mintychochip` under `alkahest-api` or `paper-server/src/main` does **not** require `rebuildPatches`. Only vanilla (`src/minecraft`) edits do.
 

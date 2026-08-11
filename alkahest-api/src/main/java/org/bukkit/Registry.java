@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Predicates;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
-import dev.mintychochip.customblock.CustomBlocks;
 import io.papermc.paper.datacomponent.DataComponentType;
 import io.papermc.paper.entity.poi.PoiType;
 import io.papermc.paper.registry.RegistryAccess;
@@ -188,18 +187,13 @@ public interface Registry<T extends Keyed> extends Iterable<T> {
      */
     Registry<LootTables> LOOT_TABLES = new SimpleRegistry<>(LootTables.class);
     /**
-     * Server materials: non-legacy {@link VanillaMaterial} constants plus registered
-     * custom materials ({@link dev.mintychochip.customblock.CustomBlockDefinition}).
-     *
-     * <p>{@link Material#values()} / {@link Material#valueOf(String)} remain vanilla-only;
-     * use this registry or {@link Material#getByKey(NamespacedKey)} for customs.
+     * Server materials: non-legacy {@link VanillaMaterial} constants.
      *
      * @see Material
      * @see VanillaMaterial
      */
     Registry<Material> MATERIAL = new MaterialRegistry(
-        new SimpleRegistry<>(VanillaMaterial.class, (mat) -> !mat.isLegacy()),
-        CustomBlocks::catalog
+        new SimpleRegistry<>(VanillaMaterial.class, (mat) -> !mat.isLegacy())
     );
     /**
      * Server menus.

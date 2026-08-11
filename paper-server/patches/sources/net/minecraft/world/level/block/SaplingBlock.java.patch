@@ -8,16 +8,11 @@
  
      @Override
      public MapCodec<? extends SaplingBlock> codec() {
-@@ -43,16 +_,64 @@
+@@ -43,16 +_,59 @@
  
      @Override
      protected void randomTick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
 -        if (level.getMaxLocalRawBrightness(pos.above()) >= 9 && random.nextInt(7) == 0) {
-+        // mintychochip start - custom plant behavior
-+        if (dev.mintychochip.customblock.CustomPlantLifecycle.handleRandomTick(level, pos, state, random)) {
-+            return;
-+        }
-+        // mintychochip end - custom plant behavior
 +        // mintychochip start - climate/humidity crop ecology
 +        if (!dev.mintychochip.ecology.CropEcology.shouldGrow(level, pos, this, random)) {
 +            return;
@@ -73,17 +68,5 @@
 +            }
 +            // CraftBukkit end
          }
-     }
- 
-@@ -73,6 +_,11 @@
- 
-     @Override
-     public void performBonemeal(final ServerLevel level, final RandomSource random, final BlockPos pos, final BlockState state) {
-+        // mintychochip start - custom plant behavior
-+        if (dev.mintychochip.customblock.CustomPlantLifecycle.handleBonemeal(level, pos, state, random)) {
-+            return;
-+        }
-+        // mintychochip end - custom plant behavior
-         this.advanceTree(level, pos, state, random);
      }
  

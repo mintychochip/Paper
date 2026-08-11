@@ -2,25 +2,15 @@ package dev.mintychochip;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import dev.mintychochip.customblock.BlockFeel;
-import dev.mintychochip.customblock.CustomBlockDefinition;
-import dev.mintychochip.customblock.CustomBlocks;
-import dev.mintychochip.customblock.PacketHostSpec;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.VanillaMaterial;
 import org.bukkit.support.environment.Normal;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 @Normal
 public class MaterialBootstrapTest {
-
-    @AfterEach
-    public void tearDown() {
-        CustomBlocks.reset();
-    }
 
     @Test
     public void vanillaMaterialEnumConstantsNonNull() {
@@ -31,26 +21,13 @@ public class MaterialBootstrapTest {
         assertNotNull(VanillaMaterial.IRON_ORE);
         assertTrue(VanillaMaterial.GLASS instanceof Material);
         assertTrue(VanillaMaterial.GLASS.isVanilla());
-        assertFalse(VanillaMaterial.GLASS.isCustom());
     }
 
     @Test
-    public void registryMaterialIncludesVanillaAndCustom() {
-        assertSame(
-            VanillaMaterial.STONE,
-            Registry.MATERIAL.get(NamespacedKey.minecraft("stone"))
-        );
-
-        final CustomBlockDefinition def = CustomBlockDefinition.builder("mintychochip:server_registry_ore")
-            .host(PacketHostSpec.defaults())
-            .feel(BlockFeel.of(3.0F, 3.0F, true, VanillaMaterial.IRON_ORE))
-            .build();
-        CustomBlocks.register(def);
-
-        assertSame(def, Registry.MATERIAL.get(def.getKey()));
-        assertTrue(Registry.MATERIAL.stream().anyMatch(m -> m == def));
-        assertEquals(def, Material.getByKey(def.getKey()).orElseThrow());
-        assertTrue(def.isCustom());
-        assertFalse(def.isVanilla());
+    public void registryMaterialIncludesVanilla() {
+        assertSame(VanillaMaterial.STONE, Registry.MATERIAL.get(NamespacedKey.minecraft("stone")));
+        assertSame(VanillaMaterial.STONE,
+            Material.getByKey(NamespacedKey.minecraft("stone")).orElseThrow());
+        assertTrue(Registry.MATERIAL.stream().allMatch(Material::isVanilla));
     }
 }
