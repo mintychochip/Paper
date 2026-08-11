@@ -521,4 +521,52 @@ public class ProvenancePersistenceTest {
         }
     }
 
+    @Test
+    public void partialSplitPersistsParentRemainingCount() throws Exception {
+        final Path root = tempDir.resolve("mintychochip");
+        ProvenanceWriter.install(root, message -> {});
+        final ItemStack parent = new ItemStack(Items.COBBLESTONE, 8);
+        final UUID parentId = ItemProvenance.birth(parent, ProvenanceSource.BLOCK_DROP, HAND).orElseThrow();
+        final ItemStack child = parent.copyWithCount(3);
+        parent.setCount(5);
+        ItemProvenance.onSplit(parent, child);
+        ProvenanceWriter.flushAndClose();
+        ProvenanceWriter.clearInstall();
+        ItemProvenance.clearAll();
+        ProvenanceWriter.install(root, message -> {});
+
+        assertEquals(5, ItemProvenance.live().get(parentId).orElseThrow().count());
+        ProvenanceWriter.clearInstall();
+    }
+
+    @Test
+    public void consumedStackCountPersistsBeforeRestart() throws Exception {
+        final Path root = tempDir.resolve("mintychochip");
+        ProvenanceWriter.install(root, message -> {});
+        final ItemStack stack = new ItemStack(Items.BREAD, 5);
+        final UUID id = ItemProvenance.birth(stack, ProvenanceSource.LOOT, HAND).orElseThrow();
+        stack.setCount(2);
+        ItemProvenance.noteConsumed(stack);
+        ProvenanceWriter.flushAndClose();
+        ProvenanceWriter.clearInstall();
+        ItemProvenance.clearAll();
+        ProvenanceWriter.install(root, message -> {});
+
+        assertEquals(2, ItemProvenance.live().get(id).orElseThrow().count());
+        ProvenanceWriter.clearInstall();
+    }
+
+    @Test
+    public void staleLowerSequenceLiveUpdateCannotReplaceNewerRevision() throws Exception {
+        final Path db = tempDir.resolve("mintychochip/provenance.db");
+        final UUID id = UUID.randomUUID();
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            repository.upsertLive(new LiveRecord(id, "minecraft:stone", "player:p:9", 9, 900L, false), 90L);
+            repository.upsertLive(new LiveRecord(id, "minecraft:stone", "player:p:1", 1, 100L, false), 10L);
+            final LiveRecord loaded = repository.loadAliveLive().getFirst();
+            assertEquals("player:p:9", loaded.locationDisplay());
+            assertEquals(9, loaded.count());
+        }
+    }
+
 }

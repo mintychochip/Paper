@@ -305,23 +305,15 @@ public final class ItemProvenance {
             rehydrateIfNeeded(stack, id, location);
             return false;
         }
-        final int prevCount = entry.count();
-        entry.setCount(stack.getCount());
+        updateLiveCount(entry, stack.getCount());
         if (!location.isConcrete() || entry.locations().contains(location)) {
-            if (entry.count() != prevCount) {
-                persistLive(entry, false);
-            }
             return false;
         }
         if (entry.locations().isEmpty()) {
-            entry.addLocation(location);
-            persistLive(entry, false);
+            addLiveLocation(entry, location);
             return false;
         }
         // Second concrete location for one live identity.
-        if (entry.count() != prevCount) {
-            persistLive(entry, false);
-        }
         final StackLocation existing = entry.locations().iterator().next();
         recordCollision(id, ProvenanceCollisionKind.DUPLICATE_LOCATION, existing, location);
         return true;
@@ -345,22 +337,17 @@ public final class ItemProvenance {
             rehydrateIfNeeded(stack, id.get(), to);
             return false;
         }
-        entry.setCount(stack.getCount());
-        if (!to.isConcrete()) {
-            return false;
-        }
-        if (entry.locations().contains(to)) {
+        updateLiveCount(entry, stack.getCount());
+        if (!to.isConcrete() || entry.locations().contains(to)) {
             return false;
         }
         if (entry.locations().isEmpty()) {
-            entry.addLocation(to);
+            addLiveLocation(entry, to);
         } else {
             // Move the tracked instance: drop one existing location, keep the rest.
             final StackLocation existing = entry.locations().iterator().next();
-            entry.removeLocation(existing);
-            entry.addLocation(to);
+            moveLiveLocation(entry, existing, to);
         }
-        persistLive(entry, false);
         return false;
     }
 
@@ -608,7 +595,7 @@ public final class ItemProvenance {
             return Optional.empty();
         }
         final Optional<UUID> id = birth(child, ProvenanceSource.SPLIT, StackLocation.unknown(), List.of(parentId));
-        LIVE.get(parentId).ifPresent(e -> e.setCount(parentRemainingCount));
+        LIVE.get(parentId).ifPresent(e -> updateLiveCount(e, parentRemainingCount));
         return id;
     }
 
@@ -628,7 +615,7 @@ public final class ItemProvenance {
         if (parent.isEmpty()) {
             // Full take: identity moves with the items.
             rehydrate(child, StackLocation.unknown());
-            StackStamp.readId(child).flatMap(LIVE::get).ifPresent(e -> e.setCount(child.getCount()));
+            StackStamp.readId(child).flatMap(LIVE::get).ifPresent(e -> updateLiveCount(e, child.getCount()));
             return;
         }
 
@@ -656,7 +643,7 @@ public final class ItemProvenance {
                 "split child"
             ));
         }
-        parentId.flatMap(LIVE::get).ifPresent(e -> e.setCount(parent.getCount()));
+        parentId.flatMap(LIVE::get).ifPresent(e -> updateLiveCount(e, parent.getCount()));
     }
 
     /**
@@ -788,7 +775,7 @@ public final class ItemProvenance {
         if (stack.isEmpty() || stack.getCount() <= 0) {
             death(id.get(), ProvenanceReason.CONSUMED, null);
         } else {
-            LIVE.get(id.get()).ifPresent(e -> e.setCount(stack.getCount()));
+            LIVE.get(id.get()).ifPresent(e -> updateLiveCount(e, stack.getCount()));
         }
     }
 
@@ -969,21 +956,15 @@ public final class ItemProvenance {
     ) {
         final LiveEntry entry = LIVE.get(id).orElse(null);
         if (entry != null) {
-            final int prevCount = entry.count();
-            final StackLocation prevLocation = entry.location();
-            entry.setCount(stack.getCount());
+            updateLiveCount(entry, stack.getCount());
             if (location.isConcrete() && !entry.locations().contains(location)) {
                 if (entry.locations().isEmpty()) {
-                    entry.addLocation(location);
+                    addLiveLocation(entry, location);
                 } else {
                     // A loaded copy of an identity already tracked elsewhere.
                     final StackLocation existing = entry.locations().iterator().next();
                     recordCollision(id, ProvenanceCollisionKind.DUPLICATE_LOCATION, existing, location);
                 }
-            }
-            // Already in LIVE: persist when count or accepted location actually changes.
-            if (entry.count() != prevCount || !entry.location().equals(prevLocation)) {
-                persistLive(entry, false);
             }
             return Optional.of(id);
         }
@@ -1023,16 +1004,63 @@ public final class ItemProvenance {
         return Optional.of(id);
     }
 
+    static void updateLiveCount(final @NotNull LiveEntry entry, final int count) {
+        synchronized (entry) {
+            if (entry.count() == count) {
+                return;
+            }
+            entry.setCount(count);
+            persistLive(entry, false);
+        }
+    }
+
+    static void addLiveLocation(final @NotNull LiveEntry entry, final @NotNull StackLocation location) {
+        if (!location.isConcrete()) {
+            return;
+        }
+        synchronized (entry) {
+            if (entry.locations().contains(location)) {
+                return;
+            }
+            entry.addLocation(location);
+            persistLive(entry, false);
+        }
+    }
+
+    static void moveLiveLocation(
+        final @NotNull LiveEntry entry,
+        final @NotNull StackLocation from,
+        final @NotNull StackLocation to
+    ) {
+        if (!to.isConcrete()) {
+            return;
+        }
+        synchronized (entry) {
+            if (entry.locations().contains(to)) {
+                return;
+            }
+            final StackLocation current = entry.locations().contains(from)
+                ? from
+                : entry.locations().stream().findFirst().orElse(null);
+            if (current != null) {
+                entry.removeLocation(current);
+            }
+            entry.addLocation(to);
+            persistLive(entry, false);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Durable live census
     // -------------------------------------------------------------------------
 
     private static void persistLive(final @NotNull LiveEntry entry, final boolean dead) {
+        final LiveEntry.LiveSnapshot snapshot = entry.snapshot();
         final LiveRecord record = new LiveRecord(
-            entry.id(),
-            entry.itemId(),
-            entry.location().display(),
-            entry.count(),
+            snapshot.id(),
+            snapshot.itemId(),
+            snapshot.location().display(),
+            snapshot.count(),
             System.currentTimeMillis(),
             dead
         );
