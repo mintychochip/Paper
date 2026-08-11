@@ -24,6 +24,7 @@ import org.jetbrains.annotations.NotNull;
 public final class ProvenanceRepository implements AutoCloseable {
 
     private static final int SCHEMA_VERSION = 2;
+    private static final int MAX_RECENT_ROWS = 16_384;
 
     private final Connection connection;
     private volatile boolean failed;
@@ -39,6 +40,7 @@ public final class ProvenanceRepository implements AutoCloseable {
         try {
             this.applyStartupPragmas();
             this.migrateSchema();
+            this.normalizeCollisionKeys();
         } catch (final SQLException ex) {
             try {
                 opened.close();
@@ -142,7 +144,7 @@ public final class ProvenanceRepository implements AutoCloseable {
         try (PreparedStatement ps = this.connection.prepareStatement(
             "SELECT id, kind, existing, observed, epoch FROM collisions ORDER BY epoch DESC LIMIT ?"
         )) {
-            ps.setInt(1, Math.max(1, Math.min(limit, 10_000)));
+            ps.setInt(1, Math.max(1, Math.min(limit, MAX_RECENT_ROWS)));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     out.add(new CollisionRecord(
@@ -244,7 +246,7 @@ public final class ProvenanceRepository implements AutoCloseable {
         try (PreparedStatement ps = this.connection.prepareStatement(
             "SELECT epoch, kind, id, item, source, reason, related, holder, detail FROM audit ORDER BY seq DESC LIMIT ?"
         )) {
-            ps.setInt(1, Math.max(1, Math.min(limit, 10_000)));
+            ps.setInt(1, Math.max(1, Math.min(limit, MAX_RECENT_ROWS)));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     out.add(toEvent(rs));
@@ -404,6 +406,27 @@ public final class ProvenanceRepository implements AutoCloseable {
         if (failure instanceof Error ex) {
             throw ex;
         }
+    }
+    private void normalizeCollisionKeys() throws SQLException {
+        if (this.queryUserVersion() < 2) {
+            return;
+        }
+        this.runInTransaction(repository -> {
+            try (Statement statement = this.connection.createStatement()) {
+                statement.executeUpdate("""
+                    DELETE FROM collisions
+                    WHERE rowid NOT IN (
+                        SELECT MIN(rowid)
+                        FROM collisions
+                        GROUP BY id, kind, existing, observed
+                    )
+                    """);
+                statement.executeUpdate("""
+                    UPDATE collisions
+                    SET dedupe_key = id || '|' || kind || '|' || existing || '|' || observed
+                    """);
+            }
+        });
     }
 
     private void createSchemaV1() throws SQLException {

@@ -45,9 +45,24 @@ public final class ProvenanceSpillJournal {
             }
         }
 
-        record Collision(long sequence, @NotNull CollisionRecord record) implements SpillRecord {
+        record Collision(
+            long sequence,
+            @NotNull CollisionRecord record,
+            @Nullable UUID auditEventId,
+            @Nullable ProvenanceEvent auditEvent
+        ) implements SpillRecord {
             public Collision(@NotNull CollisionRecord record) {
-                this(0L, record);
+                this(0L, record, null, null);
+            }
+
+            public Collision(long sequence, @NotNull CollisionRecord record) {
+                this(sequence, record, null, null);
+            }
+
+            public Collision {
+                if ((auditEventId == null) != (auditEvent == null)) {
+                    throw new IllegalArgumentException("collision audit payload must be paired");
+                }
             }
         }
 
@@ -128,11 +143,26 @@ public final class ProvenanceSpillJournal {
     }
 
     public synchronized void appendCollision(final @NotNull CollisionRecord record) throws IOException {
-        appendCollision(0L, record);
+        appendCollision(0L, record, null, null);
     }
 
-    public synchronized void appendCollision(final long sequence, final @NotNull CollisionRecord record) throws IOException {
+    public synchronized void appendCollision(
+        final long sequence,
+        final @NotNull CollisionRecord record
+    ) throws IOException {
+        appendCollision(sequence, record, null, null);
+    }
+
+    public synchronized void appendCollision(
+        final long sequence,
+        final @NotNull CollisionRecord record,
+        final @Nullable UUID auditEventId,
+        final @Nullable ProvenanceEvent auditEvent
+    ) throws IOException {
         Objects.requireNonNull(record, "record");
+        if ((auditEventId == null) != (auditEvent == null)) {
+            throw new IllegalArgumentException("collision audit payload must be paired");
+        }
         final JsonObject o = new JsonObject();
         o.addProperty("v", 2);
         o.addProperty("seq", sequence);
@@ -142,18 +172,28 @@ public final class ProvenanceSpillJournal {
         o.addProperty("existing", record.existingLocation().display());
         o.addProperty("observed", record.observedLocation().display());
         o.addProperty("epoch", record.epochMs());
+        if (auditEventId != null) {
+            final JsonObject audit = new JsonObject();
+            audit.addProperty("event_id", auditEventId.toString());
+            appendAuditFields(audit, auditEvent);
+            o.add("audit", audit);
+        }
         appendLine(o);
     }
 
     public synchronized void appendAudit(final @NotNull ProvenanceEvent event) throws IOException {
         appendAudit(0L, UUID.randomUUID(), event);
     }
+
     public synchronized void appendAudit(final @NotNull UUID eventId, final @NotNull ProvenanceEvent event) throws IOException {
         appendAudit(0L, eventId, event);
     }
 
-
-    public synchronized void appendAudit(final long sequence, final @NotNull UUID eventId, final @NotNull ProvenanceEvent event) throws IOException {
+    public synchronized void appendAudit(
+        final long sequence,
+        final @NotNull UUID eventId,
+        final @NotNull ProvenanceEvent event
+    ) throws IOException {
         Objects.requireNonNull(eventId, "eventId");
         Objects.requireNonNull(event, "event");
         final JsonObject o = new JsonObject();
@@ -161,16 +201,22 @@ public final class ProvenanceSpillJournal {
         o.addProperty("seq", sequence);
         o.addProperty("k", "audit");
         o.addProperty("event_id", eventId.toString());
-        o.addProperty("t", event.epochMs());
-        o.addProperty("type", event.type().name());
-        o.addProperty("id", event.id().toString());
-        if (event.itemId() != null) o.addProperty("item", event.itemId());
-        if (event.source() != null) o.addProperty("source", event.source().name());
-        if (event.reason() != null) o.addProperty("reason", event.reason().name());
-        if (!event.related().isEmpty()) o.add("related", uuidArray(event.related()));
-        if (event.holder() != null) o.addProperty("holder", event.holder());
-        if (event.detail() != null) o.addProperty("detail", event.detail());
+        appendAuditFields(o, event);
         appendLine(o);
+    }
+    private static void appendAuditFields(
+        final @NotNull JsonObject object,
+        final @NotNull ProvenanceEvent event
+    ) {
+        object.addProperty("t", event.epochMs());
+        object.addProperty("type", event.type().name());
+        object.addProperty("id", event.id().toString());
+        if (event.itemId() != null) object.addProperty("item", event.itemId());
+        if (event.source() != null) object.addProperty("source", event.source().name());
+        if (event.reason() != null) object.addProperty("reason", event.reason().name());
+        if (!event.related().isEmpty()) object.add("related", uuidArray(event.related()));
+        if (event.holder() != null) object.addProperty("holder", event.holder());
+        if (event.detail() != null) object.addProperty("detail", event.detail());
     }
 
     public synchronized @NotNull List<SpillRecord> readAll() throws IOException {
@@ -295,7 +341,19 @@ public final class ProvenanceSpillJournal {
             return switch (kind) {
                 case "lineage" -> new SpillRecord.Lineage(sequence, parseLineage(o));
                 case "live" -> new SpillRecord.Live(sequence, parseLive(o));
-                case "collision" -> new SpillRecord.Collision(sequence, parseCollision(o));
+                case "collision" -> {
+                    final CollisionRecord collision = parseCollision(o);
+                    if (!o.has("audit")) {
+                        yield new SpillRecord.Collision(sequence, collision);
+                    }
+                    final JsonObject audit = o.getAsJsonObject("audit");
+                    yield new SpillRecord.Collision(
+                        sequence,
+                        collision,
+                        UUID.fromString(requireString(audit, "event_id")),
+                        parseAudit(audit)
+                    );
+                }
                 case "audit" -> new SpillRecord.Audit(
                     sequence,
                     o.has("event_id") ? UUID.fromString(requireString(o, "event_id")) : legacyAuditId(line),

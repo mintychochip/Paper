@@ -1,5 +1,6 @@
 package dev.mintychochip.provenance;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -1077,12 +1078,12 @@ public final class ItemProvenance {
         final StackLocation existing,
         final StackLocation observed
     ) {
-        final String sig = kind.name() + '|' + existing.display() + '|' + observed.display();
-        final String prior = COLLISION_SEEN.putIfAbsent(id, sig);
-        if (prior != null && prior.equals(sig)) {
+        final String key = id + "|" + kind.name() + "|" + existing.display() + "|" + observed.display();
+        final String prior = COLLISION_SEEN.putIfAbsent(id, key);
+        if (prior != null && prior.equals(key)) {
             return; // already recorded this exact pair
         }
-        COLLISION_SEEN.put(id, sig);
+        COLLISION_SEEN.put(id, key);
         final long now = System.currentTimeMillis();
         final CollisionRecord record = new CollisionRecord(id, kind, existing, observed, now);
         synchronized (COLLISIONS) {
@@ -1091,8 +1092,7 @@ public final class ItemProvenance {
             }
             COLLISIONS.addLast(record);
         }
-        ProvenanceWriter.enqueueCollision(record);
-        AUDIT.append(new ProvenanceEvent(
+        final ProvenanceEvent event = new ProvenanceEvent(
             now,
             ProvenanceEventType.COLLISION,
             id,
@@ -1102,7 +1102,10 @@ public final class ItemProvenance {
             List.of(),
             observed.display(),
             kind.name() + " existing=" + existing.display()
-        ));
+        );
+        AUDIT.appendRuntime(event);
+        final UUID eventId = UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8));
+        ProvenanceWriter.enqueueCollision(record, key, eventId, event);
     }
 
     /**
