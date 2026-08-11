@@ -157,6 +157,26 @@ public class AnimalGeneticsTest {
         assertNotNull(AnimalGenetics.phenotypeOf(ageable, genome));
     }
 
+    @Test
+    public void onAddedToWorldAgeableEntryIsIdempotent() {
+        final AgeableMob ageable = mock(AgeableMob.class);
+        final UUID id = UUID.randomUUID();
+        when(ageable.getUUID()).thenReturn(id);
+        doReturn(net.minecraft.world.entity.EntityTypes.ARMADILLO).when(ageable).getType();
+        final net.minecraft.util.RandomSource random = mock(net.minecraft.util.RandomSource.class);
+        when(ageable.getRandom()).thenReturn(random);
+        final Genome expected = dev.mintychochip.genetics.profile.EmptyGeneticsProfile.of("armadillo")
+            .founder(Sex.FEMALE, new Random(1L));
+        AnimalGenetics.setGenome(id, expected);
+        AnimalGenetics.onAddedToWorld(ageable);
+        final Genome first = AnimalGenetics.getGenome(id);
+        AnimalGenetics.onAddedToWorld(ageable);
+        final Genome second = AnimalGenetics.getGenome(id);
+        assertNotNull(first);
+        assertNotNull(second);
+        assertTrue(GenomeCodec.deepEquals(first, second));
+    }
+
     private static Genome sampleMale() {
         return Genome.builder(Sex.MALE)
             .put(DefaultGeneticsCatalog.COAT, GeneCopy.hemizygous(Allele.of("ATGAAACCC", "O")))
