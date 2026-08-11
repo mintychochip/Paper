@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -49,6 +50,7 @@ public final class ProvenanceWriter {
     private final @NotNull Thread thread;
     private final @NotNull AtomicLong auditDropped = new AtomicLong();
     private final @NotNull AtomicLong written = new AtomicLong();
+    private long writeSequence;
     private volatile @Nullable String lastError;
     private volatile long lastErrorLogMs;
     private @Nullable BufferedWriter auditWriter;
@@ -93,6 +95,7 @@ public final class ProvenanceWriter {
             throw new IllegalStateException("provenance store failed to open: " + ex.getMessage(), ex);
         }
         this.repository = repo;
+        this.writeSequence = repo != null ? repo.maxWriteSequence() : 0L;
         LineageStore lineage = ItemProvenance.lineage();
         lineage.attachRepository(repo);
         try {
@@ -364,45 +367,58 @@ public final class ProvenanceWriter {
         batch.add(first);
         this.queue.drainTo(batch, BATCH_MAX - 1);
         final ProvenanceRepository repo = this.repository;
-        if (repo != null && !repo.isFailed() && batch.size() > 1) {
-            repo.runInTransaction(() -> {
+        try {
+            if (repo != null && !repo.isFailed() && batch.size() > 1) {
+                repo.runInTransaction(ignored -> {
+                    for (final WriteItem item : batch) {
+                        this.process(item);
+                    }
+                });
+            } else {
                 for (final WriteItem item : batch) {
                     this.process(item);
                 }
-            });
-        } else {
-            for (final WriteItem item : batch) {
-                this.process(item);
             }
+        } catch (final SQLException ex) {
+            if (repo != null) {
+                repo.markFailed();
+            }
+            this.recordError("repository write failed: " + ex.getMessage());
         }
     }
 
-    private void process(final WriteItem item) {
-        this.written.incrementAndGet();
+    private void process(final WriteItem item) throws SQLException {
         final ProvenanceRepository repo = this.repository;
         switch (item) {
             case WriteItem.Audit audit -> {
                 if (repo != null) {
-                    repo.insertAudit(audit.event());
+                    repo.insertAudit(UUID.randomUUID(), audit.event());
                 }
                 this.appendAuditJsonl(audit.event());
             }
             case WriteItem.Lineage lineage -> {
                 if (repo != null) {
-                    repo.upsertLineage(lineage.node());
+                    repo.upsertLineage(lineage.node(), ++this.writeSequence);
                 }
             }
             case WriteItem.Live live -> {
                 if (repo != null) {
-                    repo.upsertLive(live.record());
+                    repo.upsertLive(live.record(), ++this.writeSequence);
                 }
             }
             case WriteItem.Collision collision -> {
                 if (repo != null) {
-                    repo.insertCollision(collision.record());
+                    repo.insertCollision(collision.record(), collisionDedupeKey(collision.record()));
                 }
             }
         }
+        this.written.incrementAndGet();
+    }
+
+    private static @NotNull String collisionDedupeKey(final @NotNull CollisionRecord record) {
+        return record.id() + "|" + record.kind().name()
+            + "|" + record.existingLocation().display()
+            + "|" + record.observedLocation().display();
     }
 
     private boolean replaySpill() {
@@ -427,7 +443,7 @@ public final class ProvenanceWriter {
             }
         }
         try {
-            repo.runInTransaction(() -> {
+            repo.runInTransaction(ignored -> {
                 for (final ProvenanceSpillJournal.SpillRecord record : records) {
                     this.applySpill(record);
                     if (repo.isFailed()) {
@@ -435,18 +451,19 @@ public final class ProvenanceWriter {
                     }
                 }
             });
-            if (repo.isFailed()) {
-                throw new IllegalStateException("spill apply left repository failed");
-            }
             this.spillJournal.ackSeized();
             return true;
+        } catch (final SQLException ex) {
+            repo.markFailed();
+            this.recordError("spill replay failed: " + ex.getMessage());
+            return false;
         } catch (final Exception ex) {
             this.recordError("spill replay failed: " + ex.getMessage());
             return false;
         }
     }
 
-    private void applySpill(final ProvenanceSpillJournal.SpillRecord record) {
+    private void applySpill(final ProvenanceSpillJournal.SpillRecord record) throws SQLException {
         switch (record) {
             case ProvenanceSpillJournal.SpillRecord.Lineage lineage ->
                 this.process(new WriteItem.Lineage(lineage.node()));
