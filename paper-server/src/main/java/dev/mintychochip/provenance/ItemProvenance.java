@@ -76,7 +76,7 @@ public final class ItemProvenance {
             COLLISIONS.clear();
         }
         COLLISION_SEEN.clear();
-        PLACEMENTS.clear();
+        PLACEMENTS.clearTestMemory();
         CARRIED_BY_ENTITY.clear();
     }
 
@@ -566,6 +566,7 @@ public final class ItemProvenance {
         final @NotNull UUID entityId,
         final @NotNull net.minecraft.world.level.storage.ValueInput input
     ) {
+        CARRIED_BY_ENTITY.remove(entityId);
         final String parentRaw = input.getStringOr("MintyProvParent", "");
         if (parentRaw.isEmpty()) {
             return;

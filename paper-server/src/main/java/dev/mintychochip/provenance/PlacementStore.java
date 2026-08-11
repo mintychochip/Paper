@@ -84,7 +84,8 @@ public final class PlacementStore {
         }
     }
 
-    public void clear() {
+    /** Test API: wipe only the in-memory fallback map; never touches per-level SavedData. */
+    public void clearTestMemory() {
         this.memory.clear();
     }
 

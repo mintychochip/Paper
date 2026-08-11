@@ -4,12 +4,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.storage.ValueInput;
 import org.bukkit.support.environment.Normal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -260,6 +263,17 @@ public class ItemProvenanceTest {
         assertEquals(ProvenanceSource.BLOCK_RECOVER, stamp.source());
         assertEquals(List.of(minedId), stamp.parents());
         assertTrue(ItemProvenance.explain(stamp.id()).stream().anyMatch(n -> n.id().equals(minedId)));
+    }
+
+    @Test
+    public void loadingMissingCarriedRecordClearsStaleRuntimeEntry() {
+        final UUID entityId = UUID.randomUUID();
+        ItemProvenance.putCarriedForTest(
+            entityId,
+            new PlacementRecord(UUID.randomUUID(), "minecraft:stone", "player:test", 1L)
+        );
+        ItemProvenance.loadCarriedFrom(entityId, emptyValueInput());
+        assertTrue(ItemProvenance.getCarried(entityId).isEmpty());
     }
 
     @Test
@@ -711,4 +725,11 @@ public class ItemProvenanceTest {
             .count();
         assertEquals(0, zombies, "death-then-handoff must not audit ZOMBIE");
     }
+
+    private static ValueInput emptyValueInput() {
+        final ValueInput input = mock(ValueInput.class);
+        when(input.getStringOr("MintyProvParent", "")).thenReturn("");
+        return input;
+    }
+
 }

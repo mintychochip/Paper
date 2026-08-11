@@ -1860,7 +1860,7 @@
      public float getYRot() {
          return this.yRot;
      }
-@@ -3934,7 +_,9 @@
+@@ -3934,11 +_,15 @@
      }
  
      @Override
@@ -1870,6 +1870,13 @@
 +        final boolean alreadyRemoved = this.removalReason != null; // Paper - Folia schedulers
          if (this.removalReason == null) {
              this.removalReason = reason;
+         }
+-
++        // mintychochip start - item provenance: discard carried placement on entity removal
++        dev.mintychochip.provenance.ItemProvenance.discardCarried(this.getUUID());
++        // mintychochip end - item provenance
+         if (this.removalReason.shouldDestroy()) {
+             this.stopRiding();
          }
 @@ -3946,12 +_,28 @@
          this.getPassengers().forEach(Entity::stopRiding);
