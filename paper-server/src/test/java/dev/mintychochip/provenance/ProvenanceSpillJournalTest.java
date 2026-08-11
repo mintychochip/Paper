@@ -268,4 +268,91 @@ public class ProvenanceSpillJournalTest {
         assertTrue(Files.isRegularFile(replay), "must not wipe pre-existing .replay");
         assertTrue(Files.isRegularFile(path), "active spill must wait until .replay is acked");
     }
+    @Test
+    public void v2SpillRoundTripPreservesSequenceAndEventId() throws Exception {
+        final Path path = tempDir.resolve("provenance-spill.log");
+        final ProvenanceSpillJournal journal = new ProvenanceSpillJournal(path);
+        final UUID auditId = UUID.fromString("22222222-2222-2222-2222-222222222222");
+        final UUID id = UUID.randomUUID();
+        journal.appendLive(41L, new LiveRecord(id, "minecraft:stone", "player:" + PLAYER + ":0", 2, 100L, false));
+        journal.appendAudit(42L, auditId, new ProvenanceEvent(
+            101L, ProvenanceEventType.BIRTH, id, "minecraft:stone", ProvenanceSource.BLOCK_DROP,
+            null, List.of(), "hand", null
+        ));
+
+        final List<ProvenanceSpillJournal.SpillRecord> records = journal.readAll();
+        assertEquals(2, records.size());
+        assertEquals(41L, records.getFirst().sequence());
+        assertEquals(42L, records.getLast().sequence());
+        assertEquals(auditId, ((ProvenanceSpillJournal.SpillRecord.Audit) records.getLast()).eventId());
+    }
+
+    @Test
+    public void malformedFinalSpillFrameDoesNotAcknowledgePriorRecords() throws Exception {
+        final Path path = tempDir.resolve("provenance-spill.log");
+        final ProvenanceSpillJournal journal = new ProvenanceSpillJournal(path);
+        journal.appendLineage(1L, new LineageNode(
+            UUID.randomUUID(), "minecraft:stone", ProvenanceSource.BLOCK_DROP, List.of(), 1L, "hand"
+        ));
+        Files.writeString(
+            path, "{\"v\":2,\"seq\":2,\"k\":\"lineage\"",
+            StandardCharsets.UTF_8, StandardOpenOption.APPEND
+        );
+
+        final List<ProvenanceSpillJournal.SpillRecord> records = journal.readAll();
+        assertEquals(1, records.size());
+        assertEquals(1L, journal.incompleteTailCount());
+        assertTrue(Files.exists(path));
+        journal.seizePending();
+        assertTrue(Files.exists(journal.replayPath()));
+    }
+
+    @Test
+    public void malformedFinalV2HeaderDoesNotAbortPriorRecords() throws Exception {
+        final Path path = tempDir.resolve("provenance-spill.log");
+        final ProvenanceSpillJournal journal = new ProvenanceSpillJournal(path);
+        journal.appendLineage(1L, new LineageNode(
+            UUID.randomUUID(), "minecraft:stone", ProvenanceSource.BLOCK_DROP, List.of(), 1L, "hand"
+        ));
+        Files.writeString(
+            path, "{\"v\":2,\"k\":\"lineage\"}\n",
+            StandardCharsets.UTF_8, StandardOpenOption.APPEND
+        );
+
+        assertEquals(1, journal.readAll().size());
+        assertEquals(1L, journal.incompleteTailCount());
+    }
+
+    @Test
+    public void v1AuditEventIdIsStableAcrossReplays() throws Exception {
+        final Path path = tempDir.resolve("provenance-spill.log");
+        final UUID id = UUID.randomUUID();
+        Files.writeString(
+            path,
+            "{\"k\":\"audit\",\"t\":1,\"type\":\"BIRTH\",\"id\":\"" + id + "\"}\n",
+            StandardCharsets.UTF_8
+        );
+        final ProvenanceSpillJournal journal = new ProvenanceSpillJournal(path);
+
+        final UUID first = ((ProvenanceSpillJournal.SpillRecord.Audit) journal.readAll().getFirst()).eventId();
+        final UUID second = ((ProvenanceSpillJournal.SpillRecord.Audit) journal.readAll().getFirst()).eventId();
+        assertEquals(first, second);
+    }
+
+    @Test
+    public void malformedFinalV2KindTypeDoesNotAbortPriorRecords() throws Exception {
+        final Path path = tempDir.resolve("provenance-spill.log");
+        final ProvenanceSpillJournal journal = new ProvenanceSpillJournal(path);
+        journal.appendLineage(1L, new LineageNode(
+            UUID.randomUUID(), "minecraft:stone", ProvenanceSource.BLOCK_DROP, List.of(), 1L, "hand"
+        ));
+        Files.writeString(
+            path, "{\"v\":2,\"seq\":2,\"k\":[]}\n",
+            StandardCharsets.UTF_8, StandardOpenOption.APPEND
+        );
+
+        assertEquals(1, journal.readAll().size());
+        assertEquals(1L, journal.incompleteTailCount());
+    }
+
 }
