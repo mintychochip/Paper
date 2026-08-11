@@ -16,11 +16,25 @@ import org.jetbrains.annotations.NotNull;
  */
 public final class LiveEntry {
 
+    public record LiveSnapshot(
+        @NotNull UUID id,
+        @NotNull String itemId,
+        @NotNull StackLocation location,
+        int count,
+        long bornEpochMs
+    ) {
+        public LiveSnapshot {
+            Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(itemId, "itemId");
+            Objects.requireNonNull(location, "location");
+        }
+    }
+
     private final UUID id;
     private final String itemId;
     /** Tracked instances of this identity (normally one). */
     private final ConcurrentHashMap<StackLocation, Boolean> locations = new ConcurrentHashMap<>();
-    private volatile int count;
+    private int count;
     private final long bornEpochMs;
 
     public LiveEntry(
@@ -52,29 +66,39 @@ public final class LiveEntry {
     }
 
     /** Primary tracked location, if any. */
-    public @NotNull StackLocation location() {
+    public synchronized @NotNull StackLocation location() {
         return this.locations.keySet().stream().findFirst().orElse(StackLocation.unknown());
     }
 
-    public void addLocation(final @NotNull StackLocation location) {
+    public synchronized void addLocation(final @NotNull StackLocation location) {
         if (location.isConcrete()) {
             this.locations.put(location, Boolean.TRUE);
         }
     }
 
-    public void removeLocation(final @NotNull StackLocation location) {
+    public synchronized void removeLocation(final @NotNull StackLocation location) {
         this.locations.remove(location);
     }
 
-    public int count() {
+    public synchronized int count() {
         return this.count;
     }
 
-    public void setCount(final int count) {
+    public synchronized void setCount(final int count) {
         this.count = count;
     }
 
     public long bornEpochMs() {
         return this.bornEpochMs;
+    }
+
+    public synchronized @NotNull LiveSnapshot snapshot() {
+        return new LiveSnapshot(
+            this.id,
+            this.itemId,
+            this.locations.keySet().stream().findFirst().orElse(StackLocation.unknown()),
+            this.count,
+            this.bornEpochMs
+        );
     }
 }

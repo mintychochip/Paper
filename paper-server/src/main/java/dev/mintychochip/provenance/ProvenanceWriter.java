@@ -35,6 +35,8 @@ public final class ProvenanceWriter {
 
     private static final int QUEUE_CAPACITY = 8_192;
     private static final int BATCH_MAX = 64;
+    private static final int RECENT_AUDIT_CAPACITY = 16_384;
+    private static final int RECENT_COLLISION_CAPACITY = 4_096;
     private static final long MAX_AUDIT_BYTES = 64L * 1024 * 1024;
     private static final int MAX_ROTATIONS = 3;
     private static final long ERROR_LOG_INTERVAL_MS = 30_000L;
@@ -48,8 +50,10 @@ public final class ProvenanceWriter {
     private final @NotNull Path storePath;
     private final @NotNull ProvenanceSpillJournal spillJournal;
     private volatile @Nullable ProvenanceRepository repository;
+    private final @Nullable AutoCloseable storageLock;
     private final @NotNull BlockingQueue<WriteItem> queue;
     private final @NotNull AtomicBoolean running = new AtomicBoolean(true);
+    private final @NotNull AtomicBoolean storageLockReleased = new AtomicBoolean();
     private final @NotNull Thread thread;
     private final @NotNull AtomicLong auditDropped = new AtomicLong();
     private final @NotNull AtomicLong written = new AtomicLong();
@@ -68,22 +72,32 @@ public final class ProvenanceWriter {
     private int itemsSinceFlush;
     private final @NotNull Consumer<String> logger;
 
-    private ProvenanceWriter(final @NotNull Path worldFolder, final @NotNull Consumer<String> logger) {
-        this(worldFolder, logger, QUEUE_CAPACITY);
+    private ProvenanceWriter(final @NotNull Path storageRoot, final @NotNull Consumer<String> logger) {
+        this(storageRoot, logger, QUEUE_CAPACITY, null);
     }
 
     private ProvenanceWriter(
-        final @NotNull Path worldFolder,
+        final @NotNull Path storageRoot,
         final @NotNull Consumer<String> logger,
         final int queueCapacity
     ) {
+        this(storageRoot, logger, queueCapacity, null);
+    }
+
+    private ProvenanceWriter(
+        final @NotNull Path storageRoot,
+        final @NotNull Consumer<String> logger,
+        final int queueCapacity,
+        final @Nullable AutoCloseable storageLock
+    ) {
+        this.storageLock = storageLock;
         this.logger = logger;
         this.queue = new ArrayBlockingQueue<>(Math.max(1, queueCapacity));
-        final Path dir = worldFolder.resolve("mintychochip");
+        final Path dir = storageRoot;
         try {
             Files.createDirectories(dir);
         } catch (final IOException ex) {
-            this.lastError = "cannot create " + dir + ": " + ex.getMessage();
+            throw new IllegalStateException("cannot create " + dir, ex);
         }
         this.auditPath = dir.resolve("provenance-audit.jsonl");
         this.storePath = dir.resolve("provenance.db");
@@ -92,31 +106,37 @@ public final class ProvenanceWriter {
         try {
             repo = new ProvenanceRepository(this.storePath);
         } catch (final Exception ex) {
-            this.lastError = "provenance store failed to open: " + ex.getMessage();
-            logger.accept("[mintychochip] WARN provenance store unavailable, running in-memory only: " + ex.getMessage());
+            throw new IllegalStateException("provenance store failed to open: " + ex.getMessage(), ex);
         }
         this.repository = repo;
         this.writeSequence = repo != null ? repo.maxWriteSequence() : 0L;
         LineageStore lineage = ItemProvenance.lineage();
         lineage.attachRepository(repo);
+        try {
+            // Recover unacked spill on the install thread so the live seed below sees
+            // post-replay DB state (async drain would only update SQLite, leaving a
+            // stale census after crash with pending live spill rows).
+            if (!this.replaySpill()) {
+                throw new IllegalStateException("provenance spill recovery failed: " + this.lastError);
+            }
 
-        // Recover unacked spill on the install thread so the live seed below sees
-        // post-replay DB state (async drain would only update SQLite, leaving a
-        // stale census after crash with pending live spill rows).
-        this.replaySpill();
-
-        // Seed in-memory live census from durable last-seen rows after spill recover.
-        if (repo != null) {
+            // Seed in-memory live census from durable last-seen rows after spill recover.
             for (final LiveRecord row : repo.loadAliveLive()) {
                 final StackLocation loc = ProvenanceRepository.parseLocationDisplay(row.locationDisplay());
                 ItemProvenance.live().put(new LiveEntry(row.id(), row.itemId(), loc, row.count(), row.epochMs()));
             }
             synchronized (this.recentAudit) {
-                this.recentAudit.addAll(repo.loadRecentAudit(256));
+                this.recentAudit.clear();
+                this.recentAudit.addAll(repo.loadRecentAudit(RECENT_AUDIT_CAPACITY));
             }
             synchronized (this.recentCollisions) {
-                this.recentCollisions.addAll(repo.loadRecentCollisions(256));
+                this.recentCollisions.clear();
+                this.recentCollisions.addAll(repo.loadRecentCollisions(RECENT_COLLISION_CAPACITY));
             }
+        } catch (final RuntimeException ex) {
+            lineage.attachRepository(null);
+            repo.close();
+            throw ex;
         }
         this.state = repo != null && !repo.isFailed() ? State.RUNNING : State.DEGRADED;
         this.thread = new Thread(this::drain, "mintychochip-provenance-writer");
@@ -124,14 +144,56 @@ public final class ProvenanceWriter {
         this.thread.start();
     }
 
-    public static synchronized void install(final @NotNull Path worldFolder, final @NotNull Consumer<String> logger) {
+    public static synchronized void install(final @NotNull Path storageRoot, final @NotNull Consumer<String> logger) {
         if (instance != null) {
             return;
         }
-        instance = new ProvenanceWriter(worldFolder, logger);
-        final Path audit = instance.auditPath;
-        final String store = instance.repository != null ? "sqlite" : "in-memory";
-        logger.accept("[mintychochip] provenance audit → " + audit + " (store: " + store + ")");
+        final ProvenanceWriter writer = new ProvenanceWriter(storageRoot, logger);
+        instance = writer;
+        try {
+            logger.accept("[mintychochip] provenance audit → " + writer.auditPath + " (store: sqlite)");
+        } catch (final RuntimeException | Error ex) {
+            instance = null;
+            writer.shutdown();
+            ItemProvenance.lineage().attachRepository(null);
+            throw ex;
+        }
+    }
+
+    static synchronized @NotNull ProvenanceWriter installLocked(
+        final @NotNull Path storageRoot,
+        final @NotNull Consumer<String> logger,
+        final @NotNull AutoCloseable storageLock
+    ) {
+        if (instance != null) {
+            try {
+                storageLock.close();
+            } catch (final Exception closeFailure) {
+                throw new IllegalStateException("cannot release provenance storage lock", closeFailure);
+            }
+            throw new IllegalStateException("provenance writer is already installed");
+        }
+        final ProvenanceWriter writer;
+        try {
+            writer = new ProvenanceWriter(storageRoot, logger, QUEUE_CAPACITY, storageLock);
+        } catch (final RuntimeException | Error ex) {
+            try {
+                storageLock.close();
+            } catch (final Exception closeFailure) {
+                ex.addSuppressed(closeFailure);
+            }
+            throw ex;
+        }
+        instance = writer;
+        try {
+            logger.accept("[mintychochip] provenance audit → " + writer.auditPath + " (store: sqlite)");
+        } catch (final RuntimeException | Error ex) {
+            instance = null;
+            writer.shutdown();
+            ItemProvenance.lineage().attachRepository(null);
+            throw ex;
+        }
+        return writer;
     }
 
     /**
@@ -139,17 +201,23 @@ public final class ProvenanceWriter {
      * exercised without flooding tens of thousands of events.
      */
     public static synchronized void installForTest(
-        final @NotNull Path worldFolder,
+        final @NotNull Path storageRoot,
         final @NotNull Consumer<String> logger,
         final int queueCapacity
     ) {
         if (instance != null) {
             return;
         }
-        instance = new ProvenanceWriter(worldFolder, logger, queueCapacity);
-        final Path audit = instance.auditPath;
-        final String store = instance.repository != null ? "sqlite" : "in-memory";
-        logger.accept("[mintychochip] provenance audit → " + audit + " (store: " + store + ", test-capacity=" + queueCapacity + ")");
+        final ProvenanceWriter writer = new ProvenanceWriter(storageRoot, logger, queueCapacity);
+        instance = writer;
+        try {
+            logger.accept("[mintychochip] provenance audit → " + writer.auditPath + " (store: sqlite, test-capacity=" + queueCapacity + ")");
+        } catch (final RuntimeException | Error ex) {
+            instance = null;
+            writer.shutdown();
+            ItemProvenance.lineage().attachRepository(null);
+            throw ex;
+        }
     }
 
     /** Test hook: stop the writer and detach. */
@@ -159,6 +227,15 @@ public final class ProvenanceWriter {
         if (writer != null) {
             writer.shutdown();
         }
+        ItemProvenance.lineage().attachRepository(null);
+    }
+
+    static synchronized void clearInstall(final @NotNull ProvenanceWriter expected) {
+        if (instance != expected) {
+            return;
+        }
+        instance = null;
+        expected.shutdown();
         ItemProvenance.lineage().attachRepository(null);
     }
 
@@ -198,6 +275,16 @@ public final class ProvenanceWriter {
         w.offerCritical(new WriteItem.Collision(w.nextSequence(), record));
     }
 
+    public static void enqueueCollision(
+        final @NotNull CollisionRecord record,
+        final @NotNull String dedupeKey,
+        final @NotNull UUID auditEventId,
+        final @NotNull ProvenanceEvent auditEvent
+    ) {
+        final ProvenanceWriter w = instance;
+        if (w == null) return;
+        w.offerCritical(new WriteItem.Collision(w.nextSequence(), record, dedupeKey, auditEventId, auditEvent));
+    }
     private synchronized long nextSequence() {
         return ++this.writeSequence;
     }
@@ -230,13 +317,27 @@ public final class ProvenanceWriter {
             switch (item) {
                 case WriteItem.Lineage lineage -> this.spillJournal.appendLineage(lineage.sequence(), lineage.node());
                 case WriteItem.Live live -> this.spillJournal.appendLive(live.sequence(), live.record());
-                case WriteItem.Collision collision -> this.spillJournal.appendCollision(collision.sequence(), collision.record());
+                case WriteItem.Collision collision -> this.spillJournal.appendCollision(
+                    collision.sequence(),
+                    collision.record(),
+                    collision.auditEventId(),
+                    collision.auditEvent()
+                );
                 case WriteItem.Audit audit -> this.spillJournal.appendAudit(audit.sequence(), audit.eventId(), audit.event());
             }
         } catch (final IOException ex) {
             this.criticalFailures.incrementAndGet();
             this.recordError("critical spill failed: " + ex.getMessage());
             try {
+                if (item instanceof WriteItem.Collision collision
+                    && collision.auditEventId() != null
+                    && collision.auditEvent() != null) {
+                    this.queue.put(new WriteItem.Audit(
+                        collision.sequence(),
+                        collision.auditEventId(),
+                        collision.auditEvent()
+                    ));
+                }
                 this.queue.put(item);
             } catch (final InterruptedException ie) {
                 Thread.currentThread().interrupt();
@@ -245,38 +346,60 @@ public final class ProvenanceWriter {
         }
     }
     private void drain() {
-        while (this.running.get()) {
-            try {
-                final WriteItem first = this.queue.poll(500, TimeUnit.MILLISECONDS);
-                if (first != null) {
-                    this.processBatch(first);
-                } else {
-                    this.attemptReopen();
-                    this.replaySpill();
-                    this.flushAudit();
-                }
-            } catch (final InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                break;
-            } catch (final Throwable t) {
-                this.recordError("writer failure: " + t);
-            }
-        }
-        // Final drain on close: memory queue then remaining spill.
+
         try {
-            WriteItem item;
-            while ((item = this.queue.poll()) != null) {
-                this.processBatch(item);
-            }
+            // Recover before each poll so a queued backlog cannot starve
+            // repository reopen or spill replay indefinitely.
             this.replaySpill();
-        } catch (final Throwable t) {
-            this.recordError("final drain failure: " + t);
+            while (this.running.get()) {
+                try {
+                    this.attemptReopen();
+                    if (System.currentTimeMillis() >= this.nextRetryMs) {
+                        this.replaySpill();
+                    }
+                    final WriteItem first = this.queue.poll(500, TimeUnit.MILLISECONDS);
+                    if (first != null) {
+                        this.processBatch(first);
+                    } else {
+                        this.flushAudit();
+                    }
+                } catch (final InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (final Throwable t) {
+                    this.recordError("writer failure: " + t);
+                }
+            }
+            // Final drain on close: memory queue then remaining spill.
+            try {
+                WriteItem item;
+                while ((item = this.queue.poll()) != null) {
+                    this.processBatch(item);
+                }
+                this.replaySpill();
+            } catch (final Throwable t) {
+                this.recordError("final drain failure: " + t);
+            }
+            this.flushAudit();
+            this.closeAudit();
+            final ProvenanceRepository repo = this.repository;
+            if (repo != null) {
+                repo.close();
+            }
+        } finally {
+            this.releaseStorageLock();
         }
-        this.flushAudit();
-        this.closeAudit();
-        final ProvenanceRepository repo = this.repository;
-        if (repo != null) {
-            repo.close();
+    }
+
+    private void releaseStorageLock() {
+        final AutoCloseable lock = this.storageLock;
+        if (lock == null || !this.storageLockReleased.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            lock.close();
+        } catch (final Exception ex) {
+            this.recordError("storage lock release failed: " + ex.getMessage());
         }
     }
 
@@ -291,23 +414,14 @@ public final class ProvenanceWriter {
             return;
         }
         try {
+            final List<ProcessedItem> applied = new ArrayList<>(batch.size());
             repo.runInTransaction(ignored -> {
-                for (final WriteItem item : batch) this.process(item);
-            });
-            for (final WriteItem item : batch) {
-                this.written.incrementAndGet();
-                if (item instanceof WriteItem.Audit audit) {
-                    this.appendAuditJsonl(audit.event());
-                    synchronized (this.recentAudit) {
-                        this.recentAudit.addFirst(audit.event());
-                        while (this.recentAudit.size() > 256) this.recentAudit.removeLast();
-                    }
-                } else if (item instanceof WriteItem.Collision collision) {
-                    synchronized (this.recentCollisions) {
-                        this.recentCollisions.addFirst(collision.record());
-                        while (this.recentCollisions.size() > 256) this.recentCollisions.removeLast();
-                    }
+                for (final WriteItem item : batch) {
+                    applied.add(this.process(item));
                 }
+            });
+            for (final ProcessedItem item : applied) {
+                this.recordCommitted(item);
             }
             this.lastCommitMs = System.currentTimeMillis();
             this.state = State.RUNNING;
@@ -322,14 +436,62 @@ public final class ProvenanceWriter {
         }
     }
 
-    private void process(final WriteItem item) throws SQLException {
+    private @NotNull ProcessedItem process(final WriteItem item) throws SQLException {
         final ProvenanceRepository repo = this.repository;
         if (repo == null) throw new SQLException("repository unavailable");
-        switch (item) {
-            case WriteItem.Audit audit -> repo.insertAudit(audit.eventId(), audit.event());
-            case WriteItem.Lineage lineage -> repo.upsertLineage(lineage.node(), lineage.sequence());
-            case WriteItem.Live live -> repo.upsertLive(live.record(), live.sequence());
-            case WriteItem.Collision collision -> repo.insertCollision(collision.record(), collisionDedupeKey(collision.record()));
+        return switch (item) {
+            case WriteItem.Audit audit ->
+                new ProcessedItem(item, false, repo.insertAudit(audit.eventId(), audit.event()));
+            case WriteItem.Lineage lineage -> {
+                repo.upsertLineage(lineage.node(), lineage.sequence());
+                yield new ProcessedItem(item, false, false);
+            }
+            case WriteItem.Live live -> {
+                repo.upsertLive(live.record(), live.sequence());
+                yield new ProcessedItem(item, false, false);
+            }
+            case WriteItem.Collision collision -> {
+                final boolean collisionInserted = repo.insertCollision(
+                    collision.record(),
+                    collision.dedupeKey()
+                );
+                boolean auditInserted = false;
+                if (collisionInserted && collision.auditEventId() != null && collision.auditEvent() != null) {
+                    auditInserted = repo.insertAudit(collision.auditEventId(), collision.auditEvent());
+                }
+                yield new ProcessedItem(item, collisionInserted, auditInserted);
+            }
+        };
+    }
+
+    private void recordCommitted(final @NotNull ProcessedItem processed) {
+        this.written.incrementAndGet();
+        if (processed.item() instanceof WriteItem.Audit audit) {
+            if (processed.auditInserted()) {
+                this.recordAuditCommitted(audit.event());
+            }
+        } else if (processed.item() instanceof WriteItem.Collision collision) {
+            if (processed.collisionInserted()) {
+                synchronized (this.recentCollisions) {
+                    this.recentCollisions.addFirst(collision.record());
+                    while (this.recentCollisions.size() > RECENT_COLLISION_CAPACITY) {
+                        this.recentCollisions.removeLast();
+                    }
+                }
+            }
+            if (processed.auditInserted() && collision.auditEvent() != null) {
+                this.recordAuditCommitted(collision.auditEvent());
+            }
+        }
+    }
+
+    private void recordAuditCommitted(final @NotNull ProvenanceEvent event) {
+        this.appendAuditJsonl(event);
+        synchronized (this.recentAudit) {
+            this.recentAudit.addFirst(event);
+            while (this.recentAudit.size() > RECENT_AUDIT_CAPACITY) {
+                this.recentAudit.removeLast();
+            }
         }
     }
 
@@ -340,75 +502,155 @@ public final class ProvenanceWriter {
     }
 
     private void attemptReopen() {
-        if (this.repository != null || System.currentTimeMillis() < this.nextRetryMs || this.state == State.DRAINING) return;
+        if (this.repository != null || System.currentTimeMillis() < this.nextRetryMs || this.state == State.DRAINING) {
+            return;
+        }
+        ProvenanceRepository reopened = null;
         try {
-            final ProvenanceRepository reopened = new ProvenanceRepository(this.storePath);
+            reopened = new ProvenanceRepository(this.storePath);
             this.repository = reopened;
             this.writeSequence = Math.max(this.writeSequence, reopened.maxWriteSequence());
             ItemProvenance.lineage().attachRepository(reopened);
+            if (!this.replaySpill()) {
+                if (this.repository == reopened) {
+                    this.discardRepository(reopened);
+                    this.state = State.DEGRADED;
+                    if (System.currentTimeMillis() >= this.nextRetryMs) {
+                        this.scheduleRetry();
+                    }
+                }
+                this.recordError("spill replay unavailable after repository reopen");
+                return;
+            }
             this.retryDelayMs = 1_000L;
+            this.nextRetryMs = 0L;
             this.state = State.RUNNING;
-            this.replaySpill();
         } catch (final Exception ex) {
+            if (reopened != null) {
+                this.discardRepository(reopened);
+            }
             this.state = State.DEGRADED;
-            this.nextRetryMs = System.currentTimeMillis() + this.retryDelayMs;
-            this.retryDelayMs = Math.min(16_000L, this.retryDelayMs * 2L);
+            this.scheduleRetry();
             this.recordError("repository reopen failed: " + ex.getMessage());
         }
     }
 
-    private void replaySpill() {
+    private void discardRepository(final @NotNull ProvenanceRepository repo) {
+        if (this.repository == repo) {
+            this.repository = null;
+            ItemProvenance.lineage().attachRepository(null);
+        }
+        repo.close();
+    }
+
+    private void scheduleRetry() {
+        this.nextRetryMs = System.currentTimeMillis() + this.retryDelayMs;
+        this.retryDelayMs = Math.min(16_000L, this.retryDelayMs * 2L);
+    }
+
+    private boolean replaySpill() {
         final ProvenanceRepository repo = this.repository;
-        // Do not seize while the store is unavailable — leave spill / .replay intact.
-        if (repo == null || repo.isFailed()) {
-            return;
+        if (repo == null) {
+            return false;
+        }
+        if (repo.isFailed()) {
+            this.discardRepository(repo);
+            this.state = State.DEGRADED;
+            this.scheduleRetry();
+            return false;
         }
         final List<ProvenanceSpillJournal.SpillRecord> records;
         try {
             records = this.spillJournal.seizePending();
         } catch (final IOException ex) {
+            this.scheduleRetry();
             this.recordError("spill read failed: " + ex.getMessage());
-            return;
+            return false;
         }
         if (records.isEmpty()) {
-            // Empty seized file (e.g. blank lines) must still be acked so recovery can advance.
             try {
                 this.spillJournal.ackSeized();
-            } catch (final IOException ignored) {
-                // nothing outstanding
+                return true;
+            } catch (final IOException ex) {
+                this.scheduleRetry();
+                this.recordError("spill acknowledgement failed: " + ex.getMessage());
+                return false;
             }
-            return;
         }
         try {
+            final List<ProcessedItem> applied = new ArrayList<>(records.size());
             repo.runInTransaction(ignored -> {
                 for (final ProvenanceSpillJournal.SpillRecord record : records) {
-                    this.applySpill(record);
+                    applied.add(this.applySpill(record));
+                    if (repo.isFailed()) {
+                        throw new IllegalStateException("spill apply failed after SQL error");
+                    }
                 }
             });
-            this.spillJournal.ackSeized();
+            try {
+                this.spillJournal.ackSeized();
+            } catch (final IOException ex) {
+                this.refreshRecentSnapshots(repo);
+                this.scheduleRetry();
+                this.recordError("spill acknowledgement failed: " + ex.getMessage());
+                return false;
+            }
+            for (final ProcessedItem item : applied) {
+                this.recordCommitted(item);
+            }
+            return true;
         } catch (final SQLException ex) {
             repo.markFailed();
+            this.discardRepository(repo);
+            this.state = State.DEGRADED;
+            this.scheduleRetry();
             this.recordError("spill replay failed: " + ex.getMessage());
-            // Leave .replay for the next attempt; never ack on failure.
-        } catch (final IOException ex) {
+            return false;
+        } catch (final Exception ex) {
+            if (repo.isFailed()) {
+                this.discardRepository(repo);
+                this.state = State.DEGRADED;
+            }
+            this.scheduleRetry();
             this.recordError("spill replay failed: " + ex.getMessage());
-            // Leave .replay for the next attempt; never ack on failure.
+            return false;
         }
     }
 
-    private void applySpill(final ProvenanceSpillJournal.SpillRecord record) throws SQLException {
+    private void refreshRecentSnapshots(final @NotNull ProvenanceRepository repo) {
+        if (repo.isFailed()) {
+            return;
+        }
+        synchronized (this.recentAudit) {
+            this.recentAudit.clear();
+            this.recentAudit.addAll(repo.loadRecentAudit(RECENT_AUDIT_CAPACITY));
+        }
+        synchronized (this.recentCollisions) {
+            this.recentCollisions.clear();
+            this.recentCollisions.addAll(repo.loadRecentCollisions(RECENT_COLLISION_CAPACITY));
+        }
+    }
+
+    private @NotNull ProcessedItem applySpill(final ProvenanceSpillJournal.SpillRecord record) throws SQLException {
         final long sequence = record.sequence() == 0L ? ++this.writeSequence : record.sequence();
         this.writeSequence = Math.max(this.writeSequence, sequence);
-        switch (record) {
+        final WriteItem item = switch (record) {
             case ProvenanceSpillJournal.SpillRecord.Lineage lineage ->
-                this.process(new WriteItem.Lineage(sequence, lineage.node()));
+                new WriteItem.Lineage(sequence, lineage.node());
             case ProvenanceSpillJournal.SpillRecord.Live live ->
-                this.process(new WriteItem.Live(sequence, live.record()));
+                new WriteItem.Live(sequence, live.record());
             case ProvenanceSpillJournal.SpillRecord.Collision collision ->
-                this.process(new WriteItem.Collision(sequence, collision.record()));
+                new WriteItem.Collision(
+                    sequence,
+                    collision.record(),
+                    collisionDedupeKey(collision.record()),
+                    collision.auditEventId(),
+                    collision.auditEvent()
+                );
             case ProvenanceSpillJournal.SpillRecord.Audit audit ->
-                this.process(new WriteItem.Audit(sequence, audit.eventId(), audit.event()));
-        }
+                new WriteItem.Audit(sequence, audit.eventId(), audit.event());
+        };
+        return this.process(item);
     }
 
     private void appendAuditJsonl(final @NotNull ProvenanceEvent event) {
@@ -502,7 +744,11 @@ public final class ProvenanceWriter {
         final long now = System.currentTimeMillis();
         if (now - this.lastErrorLogMs > ERROR_LOG_INTERVAL_MS) {
             this.lastErrorLogMs = now;
-            this.logger.accept("[mintychochip] WARN provenance storage: " + message);
+            try {
+                this.logger.accept("[mintychochip] WARN provenance storage: " + message);
+            } catch (final RuntimeException | Error ignored) {
+                // Logging must not interrupt storage recovery or lock release.
+            }
         }
     }
 
@@ -539,6 +785,7 @@ public final class ProvenanceWriter {
             + " audit-dropped=" + w.auditDropped.get()
             + " last-commit-ms=" + w.lastCommitMs
             + " store-root=" + w.auditPath.getParent()
+            + " incomplete-tail=" + w.spillJournal.incompleteTailCount()
             + " last-error=" + error;
     }
 
@@ -562,6 +809,13 @@ public final class ProvenanceWriter {
     // Queue payloads
     // -------------------------------------------------------------------------
 
+    private record ProcessedItem(
+        @NotNull WriteItem item,
+        boolean collisionInserted,
+        boolean auditInserted
+    ) {
+    }
+
     private sealed interface WriteItem {
         long sequence();
 
@@ -574,7 +828,16 @@ public final class ProvenanceWriter {
         record Live(long sequence, @NotNull LiveRecord record) implements WriteItem {
         }
 
-        record Collision(long sequence, @NotNull CollisionRecord record) implements WriteItem {
+        record Collision(
+            long sequence,
+            @NotNull CollisionRecord record,
+            @NotNull String dedupeKey,
+            @Nullable UUID auditEventId,
+            @Nullable ProvenanceEvent auditEvent
+        ) implements WriteItem {
+            Collision(final long sequence, final @NotNull CollisionRecord record) {
+                this(sequence, record, collisionDedupeKey(record), null, null);
+            }
         }
     }
 

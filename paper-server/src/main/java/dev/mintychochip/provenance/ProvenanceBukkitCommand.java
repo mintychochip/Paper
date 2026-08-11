@@ -150,12 +150,12 @@ public final class ProvenanceBukkitCommand extends Command {
         sender.sendMessage(RULE_TOP);
         sender.sendMessage(kv("enabled", String.valueOf(ItemProvenance.isEnabled()),
             ItemProvenance.isEnabled() ? GREEN : RED));
-        sender.sendMessage(kv("live census", String.valueOf(ItemProvenance.live().size()), AQUA));
+        sender.sendMessage(kv("loaded live cache", String.valueOf(ItemProvenance.live().size()), AQUA));
         sender.sendMessage(kv("lineage cache", String.valueOf(ItemProvenance.lineage().size()), AQUA));
         sender.sendMessage(kv("collisions", String.valueOf(ItemProvenance.collisions().size()),
             ItemProvenance.collisions().isEmpty() ? GREEN : RED));
         sender.sendMessage(kv("audit buffer", String.valueOf(ItemProvenance.audit().size()), GRAY));
-        sender.sendMessage(kv("store", dev.mintychochip.provenance.ProvenanceWriter.status(), GRAY));
+        sender.sendMessage(kv("writer state", ProvenanceWriter.status(), GRAY));
         sender.sendMessage(RULE_BOT);
     }
 
@@ -224,15 +224,20 @@ public final class ProvenanceBukkitCommand extends Command {
     }
 
     private static void collisions(final CommandSender sender) {
-        final List<CollisionRecord> list = ItemProvenance.collisions();
+        final Optional<List<CollisionRecord>> durable = ProvenanceWriter.recentCollisions(4_096);
+        final List<CollisionRecord> list = durable.orElseGet(ItemProvenance::collisions);
         sender.sendMessage(RULE_TOP);
+        sender.sendMessage(
+            text("│ ", DARK_GRAY)
+                .append(text(durable.isPresent() ? "durable collision snapshot" : "runtime collision ring", GRAY))
+        );
         if (list.isEmpty()) {
             sender.sendMessage(text("│ ", DARK_GRAY).append(text("no collisions recorded", GREEN)));
         } else {
             sender.sendMessage(
                 text("│ ", DARK_GRAY)
                     .append(text(String.valueOf(list.size()), RED, BOLD))
-                    .append(text(" collision(s)", RED))
+                    .append(text(durable.isPresent() ? " durable collision(s)" : " collision(s)", RED))
             );
             sender.sendMessage(text("│", DARK_GRAY));
             for (final CollisionRecord c : list) {

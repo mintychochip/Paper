@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 /**
@@ -44,9 +45,24 @@ public final class ProvenanceSpillJournal {
             }
         }
 
-        record Collision(long sequence, @NotNull CollisionRecord record) implements SpillRecord {
+        record Collision(
+            long sequence,
+            @NotNull CollisionRecord record,
+            @Nullable UUID auditEventId,
+            @Nullable ProvenanceEvent auditEvent
+        ) implements SpillRecord {
             public Collision(@NotNull CollisionRecord record) {
-                this(0L, record);
+                this(0L, record, null, null);
+            }
+
+            public Collision(long sequence, @NotNull CollisionRecord record) {
+                this(sequence, record, null, null);
+            }
+
+            public Collision {
+                if ((auditEventId == null) != (auditEvent == null)) {
+                    throw new IllegalArgumentException("collision audit payload must be paired");
+                }
             }
         }
 
@@ -62,6 +78,7 @@ public final class ProvenanceSpillJournal {
     }
     private final @NotNull Path path;
     private final @NotNull Path replayPath;
+    private final @NotNull AtomicLong incompleteTailCount = new AtomicLong();
 
     public ProvenanceSpillJournal(final @NotNull Path path) {
         this.path = Objects.requireNonNull(path, "path");
@@ -74,6 +91,10 @@ public final class ProvenanceSpillJournal {
 
     public @NotNull Path replayPath() {
         return this.replayPath;
+    }
+
+    public long incompleteTailCount() {
+        return this.incompleteTailCount.get();
     }
 
     public synchronized void appendLineage(final @NotNull LineageNode node) throws IOException {
@@ -122,11 +143,26 @@ public final class ProvenanceSpillJournal {
     }
 
     public synchronized void appendCollision(final @NotNull CollisionRecord record) throws IOException {
-        appendCollision(0L, record);
+        appendCollision(0L, record, null, null);
     }
 
-    public synchronized void appendCollision(final long sequence, final @NotNull CollisionRecord record) throws IOException {
+    public synchronized void appendCollision(
+        final long sequence,
+        final @NotNull CollisionRecord record
+    ) throws IOException {
+        appendCollision(sequence, record, null, null);
+    }
+
+    public synchronized void appendCollision(
+        final long sequence,
+        final @NotNull CollisionRecord record,
+        final @Nullable UUID auditEventId,
+        final @Nullable ProvenanceEvent auditEvent
+    ) throws IOException {
         Objects.requireNonNull(record, "record");
+        if ((auditEventId == null) != (auditEvent == null)) {
+            throw new IllegalArgumentException("collision audit payload must be paired");
+        }
         final JsonObject o = new JsonObject();
         o.addProperty("v", 2);
         o.addProperty("seq", sequence);
@@ -136,18 +172,28 @@ public final class ProvenanceSpillJournal {
         o.addProperty("existing", record.existingLocation().display());
         o.addProperty("observed", record.observedLocation().display());
         o.addProperty("epoch", record.epochMs());
+        if (auditEventId != null) {
+            final JsonObject audit = new JsonObject();
+            audit.addProperty("event_id", auditEventId.toString());
+            appendAuditFields(audit, auditEvent);
+            o.add("audit", audit);
+        }
         appendLine(o);
     }
 
     public synchronized void appendAudit(final @NotNull ProvenanceEvent event) throws IOException {
         appendAudit(0L, UUID.randomUUID(), event);
     }
+
     public synchronized void appendAudit(final @NotNull UUID eventId, final @NotNull ProvenanceEvent event) throws IOException {
         appendAudit(0L, eventId, event);
     }
 
-
-    public synchronized void appendAudit(final long sequence, final @NotNull UUID eventId, final @NotNull ProvenanceEvent event) throws IOException {
+    public synchronized void appendAudit(
+        final long sequence,
+        final @NotNull UUID eventId,
+        final @NotNull ProvenanceEvent event
+    ) throws IOException {
         Objects.requireNonNull(eventId, "eventId");
         Objects.requireNonNull(event, "event");
         final JsonObject o = new JsonObject();
@@ -155,16 +201,22 @@ public final class ProvenanceSpillJournal {
         o.addProperty("seq", sequence);
         o.addProperty("k", "audit");
         o.addProperty("event_id", eventId.toString());
-        o.addProperty("t", event.epochMs());
-        o.addProperty("type", event.type().name());
-        o.addProperty("id", event.id().toString());
-        if (event.itemId() != null) o.addProperty("item", event.itemId());
-        if (event.source() != null) o.addProperty("source", event.source().name());
-        if (event.reason() != null) o.addProperty("reason", event.reason().name());
-        if (!event.related().isEmpty()) o.add("related", uuidArray(event.related()));
-        if (event.holder() != null) o.addProperty("holder", event.holder());
-        if (event.detail() != null) o.addProperty("detail", event.detail());
+        appendAuditFields(o, event);
         appendLine(o);
+    }
+    private static void appendAuditFields(
+        final @NotNull JsonObject object,
+        final @NotNull ProvenanceEvent event
+    ) {
+        object.addProperty("t", event.epochMs());
+        object.addProperty("type", event.type().name());
+        object.addProperty("id", event.id().toString());
+        if (event.itemId() != null) object.addProperty("item", event.itemId());
+        if (event.source() != null) object.addProperty("source", event.source().name());
+        if (event.reason() != null) object.addProperty("reason", event.reason().name());
+        if (!event.related().isEmpty()) object.add("related", uuidArray(event.related()));
+        if (event.holder() != null) object.addProperty("holder", event.holder());
+        if (event.detail() != null) object.addProperty("detail", event.detail());
     }
 
     public synchronized @NotNull List<SpillRecord> readAll() throws IOException {
@@ -211,7 +263,7 @@ public final class ProvenanceSpillJournal {
         Files.deleteIfExists(this.replayPath);
     }
 
-    private static @NotNull List<SpillRecord> parseFile(final @NotNull Path file) throws IOException {
+    private @NotNull List<SpillRecord> parseFile(final @NotNull Path file) throws IOException {
         final List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
         final List<String> nonBlank = new ArrayList<>(lines.size());
         for (final String line : lines) {
@@ -228,6 +280,7 @@ public final class ProvenanceSpillJournal {
             } catch (final IOException ex) {
                 // Truncated write from crash: drop incomplete trailing line, keep prior records.
                 if (last) {
+                    this.incompleteTailCount.incrementAndGet();
                     break;
                 }
                 throw ex;
@@ -268,19 +321,42 @@ public final class ProvenanceSpillJournal {
         } catch (final RuntimeException ex) {
             throw new IOException("malformed spill line: " + line, ex);
         }
-        final String kind = stringOrNull(o, "k");
-        if (kind == null) throw new IOException("spill line missing k: " + line);
-        final int version = o.has("v") ? o.get("v").getAsInt() : 1;
-        if (version != 1 && version != 2) throw new IOException("unsupported spill version: " + version);
-        final long sequence = version == 2 ? o.get("seq").getAsLong() : 0L;
+        final String kind;
+        final int version;
+        final long sequence;
+        try {
+            kind = stringOrNull(o, "k");
+            if (kind == null) throw new IOException("spill line missing k: " + line);
+            version = o.has("v") ? o.get("v").getAsInt() : 1;
+            if (version != 1 && version != 2) {
+                throw new IOException("unsupported spill version: " + version);
+            }
+            sequence = version == 2 ? o.get("seq").getAsLong() : 0L;
+        } catch (final IOException ex) {
+            throw ex;
+        } catch (final RuntimeException ex) {
+            throw new IOException("malformed spill header: " + line, ex);
+        }
         try {
             return switch (kind) {
                 case "lineage" -> new SpillRecord.Lineage(sequence, parseLineage(o));
                 case "live" -> new SpillRecord.Live(sequence, parseLive(o));
-                case "collision" -> new SpillRecord.Collision(sequence, parseCollision(o));
+                case "collision" -> {
+                    final CollisionRecord collision = parseCollision(o);
+                    if (!o.has("audit")) {
+                        yield new SpillRecord.Collision(sequence, collision);
+                    }
+                    final JsonObject audit = o.getAsJsonObject("audit");
+                    yield new SpillRecord.Collision(
+                        sequence,
+                        collision,
+                        UUID.fromString(requireString(audit, "event_id")),
+                        parseAudit(audit)
+                    );
+                }
                 case "audit" -> new SpillRecord.Audit(
                     sequence,
-                    o.has("event_id") ? UUID.fromString(requireString(o, "event_id")) : UUID.randomUUID(),
+                    o.has("event_id") ? UUID.fromString(requireString(o, "event_id")) : legacyAuditId(line),
                     parseAudit(o)
                 );
                 default -> throw new IOException("unknown spill kind: " + kind);
@@ -347,6 +423,12 @@ public final class ProvenanceSpillJournal {
         );
     }
 
+
+    private static @NotNull UUID legacyAuditId(final String line) {
+        return UUID.nameUUIDFromBytes(
+            ("mintychochip:provenance:v1:audit:" + line).getBytes(StandardCharsets.UTF_8)
+        );
+    }
     private static @NotNull JsonArray uuidArray(final List<UUID> ids) {
         final JsonArray arr = new JsonArray(ids.size());
         for (final UUID id : ids) {

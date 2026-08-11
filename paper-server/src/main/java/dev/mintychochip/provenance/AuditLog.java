@@ -25,12 +25,16 @@ public final class AuditLog {
         this.size = 0;
     }
 
-    public synchronized void append(final @NotNull ProvenanceEvent event) {
+    public synchronized void appendRuntime(final @NotNull ProvenanceEvent event) {
         this.events.set(this.writeIndex, event);
         this.writeIndex = (this.writeIndex + 1) % this.capacity;
         if (this.size < this.capacity) {
             this.size++;
         }
+    }
+
+    public synchronized void append(final @NotNull ProvenanceEvent event) {
+        this.appendRuntime(event);
         // Durable trail: batched writer (no-op until ProvenanceWriter.install)
         ProvenanceWriter.enqueueAudit(event);
     }

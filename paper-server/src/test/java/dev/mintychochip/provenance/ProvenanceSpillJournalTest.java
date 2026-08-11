@@ -301,9 +301,57 @@ public class ProvenanceSpillJournalTest {
 
         final List<ProvenanceSpillJournal.SpillRecord> records = journal.readAll();
         assertEquals(1, records.size());
+        assertEquals(1L, journal.incompleteTailCount());
         assertTrue(Files.exists(path));
         journal.seizePending();
         assertTrue(Files.exists(journal.replayPath()));
     }
 
+    @Test
+    public void malformedFinalV2HeaderDoesNotAbortPriorRecords() throws Exception {
+        final Path path = tempDir.resolve("provenance-spill.log");
+        final ProvenanceSpillJournal journal = new ProvenanceSpillJournal(path);
+        journal.appendLineage(1L, new LineageNode(
+            UUID.randomUUID(), "minecraft:stone", ProvenanceSource.BLOCK_DROP, List.of(), 1L, "hand"
+        ));
+        Files.writeString(
+            path, "{\"v\":2,\"k\":\"lineage\"}\n",
+            StandardCharsets.UTF_8, StandardOpenOption.APPEND
+        );
+
+        assertEquals(1, journal.readAll().size());
+        assertEquals(1L, journal.incompleteTailCount());
+    }
+
+    @Test
+    public void v1AuditEventIdIsStableAcrossReplays() throws Exception {
+        final Path path = tempDir.resolve("provenance-spill.log");
+        final UUID id = UUID.randomUUID();
+        Files.writeString(
+            path,
+            "{\"k\":\"audit\",\"t\":1,\"type\":\"BIRTH\",\"id\":\"" + id + "\"}\n",
+            StandardCharsets.UTF_8
+        );
+        final ProvenanceSpillJournal journal = new ProvenanceSpillJournal(path);
+
+        final UUID first = ((ProvenanceSpillJournal.SpillRecord.Audit) journal.readAll().getFirst()).eventId();
+        final UUID second = ((ProvenanceSpillJournal.SpillRecord.Audit) journal.readAll().getFirst()).eventId();
+        assertEquals(first, second);
+    }
+
+    @Test
+    public void malformedFinalV2KindTypeDoesNotAbortPriorRecords() throws Exception {
+        final Path path = tempDir.resolve("provenance-spill.log");
+        final ProvenanceSpillJournal journal = new ProvenanceSpillJournal(path);
+        journal.appendLineage(1L, new LineageNode(
+            UUID.randomUUID(), "minecraft:stone", ProvenanceSource.BLOCK_DROP, List.of(), 1L, "hand"
+        ));
+        Files.writeString(
+            path, "{\"v\":2,\"seq\":2,\"k\":[]}\n",
+            StandardCharsets.UTF_8, StandardOpenOption.APPEND
+        );
+
+        assertEquals(1, journal.readAll().size());
+        assertEquals(1L, journal.incompleteTailCount());
+    }
 }

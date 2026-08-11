@@ -2,9 +2,12 @@ package dev.mintychochip.provenance;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -21,6 +24,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
 
 /**
  * Durable store contracts: restart lineage survival, collision persistence,
@@ -51,7 +55,7 @@ public class ProvenancePersistenceTest {
 
     @Test
     public void restartKeepsAncestorHistory() {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack parent = new ItemStack(Items.IRON_ORE, 1);
         final UUID parentId = ItemProvenance.birth(parent, ProvenanceSource.BLOCK_DROP, HAND).orElseThrow();
@@ -67,7 +71,7 @@ public class ProvenancePersistenceTest {
         // Simulated restart: runtime state wiped, durable store stays.
         ItemProvenance.clearAll();
         ItemProvenance.lineage().clearCache();
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         ItemProvenance.rehydrate(persistedChild, HAND);
 
@@ -79,8 +83,45 @@ public class ProvenancePersistenceTest {
     }
 
     @Test
+    public void restartRebuildsLineageLiveAuditAndCollisionCaches() throws Exception {
+        final Path root = tempDir.resolve("mintychochip");
+        ProvenanceWriter.install(root, message -> {
+        });
+        final ItemStack parent = new ItemStack(Items.IRON_ORE, 1);
+        final UUID parentId = ItemProvenance.birth(parent, ProvenanceSource.BLOCK_DROP, HAND).orElseThrow();
+        final ItemStack child = new ItemStack(Items.IRON_INGOT, 1);
+        ItemProvenance.onSmelted(child, parentId, HAND);
+        final UUID childId = StackStamp.readId(child).orElseThrow();
+        assertTrue(ItemProvenance.observe(parent.copy(), StackLocation.playerSlot(PLAYER, 1)));
+        ProvenanceWriter.flushAndClose();
+        ProvenanceWriter.clearInstall();
+        ItemProvenance.clearAll();
+
+        ProvenanceWriter.install(root, message -> {
+        });
+        assertTrue(ItemProvenance.lineage().walkAncestors(childId).stream().anyMatch(n -> n.id().equals(parentId)));
+        assertTrue(ItemProvenance.live().contains(childId));
+        assertTrue(ProvenanceWriter.recentAudit(50).orElseThrow().stream().anyMatch(e -> e.id().equals(childId)));
+        assertFalse(ProvenanceWriter.recentCollisions(50).orElseThrow().isEmpty());
+        ProvenanceWriter.clearInstall();
+    }
+
+    @Test
+    public void flushLeavesNoCriticalSpillWhenRepositoryHealthy() throws Exception {
+        ProvenanceWriter.installForTest(tempDir.resolve("mintychochip"), message -> {}, 2);
+        for (int i = 0; i < 500; i++) {
+            ItemProvenance.birth(new ItemStack(Items.COBBLESTONE, 1), ProvenanceSource.BLOCK_DROP, HAND);
+        }
+        ProvenanceWriter.flushAndClose();
+        final Path spill = tempDir.resolve("mintychochip/provenance-spill.log");
+        assertEquals(0L, Files.exists(spill) ? Files.size(spill) : 0L);
+        assertFalse(Files.exists(tempDir.resolve("mintychochip/provenance-spill.log.replay")));
+        ProvenanceWriter.clearInstall();
+    }
+
+    @Test
     public void mergeSourceAndParentsPersistAndReload() throws Exception {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack target = new ItemStack(Items.COBBLESTONE, 40);
         final ItemStack source = new ItemStack(Items.COBBLESTONE, 24);
@@ -113,7 +154,7 @@ public class ProvenancePersistenceTest {
 
     @Test
     public void collisionIsPersistedAndReloadable() {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack original = new ItemStack(Items.DIAMOND, 4);
         ItemProvenance.birth(original, ProvenanceSource.LOOT, HAND).orElseThrow();
@@ -138,7 +179,7 @@ public class ProvenancePersistenceTest {
 
     @Test
     public void auditLinesAreWrittenAndValidJsonl() throws Exception {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack stack = new ItemStack(Items.COBBLESTONE, 1);
         ItemProvenance.birth(stack, ProvenanceSource.BLOCK_DROP, HAND);
@@ -216,7 +257,7 @@ public class ProvenancePersistenceTest {
     @Test
     public void criticalWritesNeverDropUnderQueuePressure() throws Exception {
         // Tiny capacity forces spill path for critical lineage writes.
-        ProvenanceWriter.installForTest(tempDir, message -> {
+        ProvenanceWriter.installForTest(tempDir.resolve("mintychochip"), message -> {
         }, 4);
         final int n = 200;
         for (int i = 0; i < n; i++) {
@@ -254,7 +295,7 @@ public class ProvenancePersistenceTest {
         assertTrue(Files.isRegularFile(replay), "simulated crash must leave unacked .replay");
         assertTrue(Files.notExists(spill) || !Files.isRegularFile(spill));
 
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         ProvenanceWriter.flushAndClose();
         ProvenanceWriter.clearInstall();
@@ -271,7 +312,7 @@ public class ProvenancePersistenceTest {
 
     @Test
     public void auditIsInSqliteAfterFlush() throws Exception {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack stack = new ItemStack(Items.COBBLESTONE, 1);
         final UUID id = ItemProvenance.birth(stack, ProvenanceSource.BLOCK_DROP, HAND).orElseThrow();
@@ -289,14 +330,14 @@ public class ProvenancePersistenceTest {
 
     @Test
     public void durableLiveSeedsCensusAndDetectsSecondLocation() {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack original = new ItemStack(Items.DIAMOND, 1);
         final UUID id = ItemProvenance.birth(original, ProvenanceSource.LOOT, HAND).orElseThrow();
         ProvenanceWriter.flushAndClose();
         ItemProvenance.clearAll();
         ProvenanceWriter.clearInstall();
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
 
         assertTrue(ItemProvenance.live().contains(id), "live must be seeded from DB");
@@ -332,7 +373,7 @@ public class ProvenancePersistenceTest {
 
         // Wipe runtime census, then install: must sync-replay spill then seed.
         ItemProvenance.clearAll();
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
 
         final LiveEntry seeded = ItemProvenance.live().get(id).orElseThrow(
@@ -376,6 +417,7 @@ public class ProvenancePersistenceTest {
             statement.execute("CREATE TABLE audit (seq INTEGER PRIMARY KEY AUTOINCREMENT, epoch INTEGER NOT NULL, kind TEXT NOT NULL, id TEXT NOT NULL, item TEXT, source TEXT, reason TEXT, related TEXT, holder TEXT, detail TEXT)");
             statement.execute("INSERT INTO lineage (id, item, source, parents, born, holder) VALUES ('" + legacyId + "', 'minecraft:stone', 'LEGACY', '', 10, 'hand')");
             statement.execute("INSERT INTO live (id, item, location, count, epoch, dead) VALUES ('" + legacyId + "', 'minecraft:diamond', 'player:" + PLAYER + ":0', 4, 100, 0)");
+            statement.execute("INSERT INTO collisions (id, kind, existing, observed, epoch) VALUES ('" + legacyId + "', 'DUPLICATE_LOCATION', 'hand', 'player:" + PLAYER + ":1', 100)");
         }
         final UUID id = UUID.randomUUID();
         try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
@@ -390,6 +432,18 @@ public class ProvenancePersistenceTest {
             final LiveRecord legacyLive = repository.loadAliveLive().getFirst();
             assertEquals(legacyId, legacyLive.id());
             assertEquals(4, legacyLive.count());
+            final CollisionRecord legacyCollision = new CollisionRecord(
+                legacyId,
+                ProvenanceCollisionKind.DUPLICATE_LOCATION,
+                StackLocation.labeled("hand"),
+                StackLocation.playerSlot(PLAYER, 1),
+                100L
+            );
+            assertFalse(repository.insertCollision(
+                legacyCollision,
+                legacyId + "|DUPLICATE_LOCATION|hand|player:" + PLAYER + ":1"
+            ));
+            assertEquals(1, repository.loadRecentCollisions(10).size());
             assertTrue(repository.maxWriteSequence() >= 1L);
         }
     }
@@ -484,6 +538,29 @@ public class ProvenancePersistenceTest {
     }
 
     @Test
+    public void recentAuditSupportsWriterSnapshotCapacity() throws Exception {
+        final Path db = tempDir.resolve("mintychochip/provenance.db");
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            repository.runInTransaction(r -> {
+                for (int i = 0; i < 16_385; i++) {
+                    r.insertAudit(UUID.randomUUID(), new ProvenanceEvent(
+                        100L + i,
+                        ProvenanceEventType.BIRTH,
+                        UUID.randomUUID(),
+                        "minecraft:diamond",
+                        null,
+                        null,
+                        List.of(),
+                        HAND.display(),
+                        null
+                    ));
+                }
+            });
+            assertEquals(16_384, repository.loadRecentAudit(16_384).size());
+        }
+    }
+
+    @Test
     public void transactionFailureRollsBackRestoresAutocommitAndPropagatesOriginal() throws Exception {
         final Path db = tempDir.resolve("mintychochip/provenance.db");
         try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
@@ -502,7 +579,7 @@ public class ProvenancePersistenceTest {
     }
     @Test
     public void repositoryFailureLeavesCriticalBatchForReplay() throws Exception {
-        ProvenanceWriter.installForTest(tempDir, message -> {}, 1);
+        ProvenanceWriter.installForTest(tempDir.resolve("mintychochip"), message -> {}, 1);
         final ItemStack first = new ItemStack(Items.DIAMOND, 1);
         final UUID firstId = ItemProvenance.birth(first, ProvenanceSource.LOOT, HAND).orElseThrow();
         ProvenanceWriter.failRepositoryForTest();
@@ -512,7 +589,7 @@ public class ProvenancePersistenceTest {
         assertTrue(ProvenanceWriter.status().contains("critical-pending="));
         ProvenanceWriter.clearInstall();
 
-        ProvenanceWriter.install(tempDir, message -> {});
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {});
         ProvenanceWriter.flushAndClose();
         ProvenanceWriter.clearInstall();
         try (ProvenanceRepository repository = new ProvenanceRepository(tempDir.resolve("mintychochip/provenance.db"))) {
@@ -521,4 +598,144 @@ public class ProvenancePersistenceTest {
         }
     }
 
+    @Test
+    public void partialSplitPersistsParentRemainingCount() throws Exception {
+        final Path root = tempDir.resolve("mintychochip");
+        ProvenanceWriter.install(root, message -> {});
+        final ItemStack parent = new ItemStack(Items.COBBLESTONE, 8);
+        final UUID parentId = ItemProvenance.birth(parent, ProvenanceSource.BLOCK_DROP, HAND).orElseThrow();
+        final ItemStack child = parent.copyWithCount(3);
+        parent.setCount(5);
+        ItemProvenance.onSplit(parent, child);
+        ProvenanceWriter.flushAndClose();
+        ProvenanceWriter.clearInstall();
+        ItemProvenance.clearAll();
+        ProvenanceWriter.install(root, message -> {});
+
+        assertEquals(5, ItemProvenance.live().get(parentId).orElseThrow().count());
+        ProvenanceWriter.clearInstall();
+    }
+
+    @Test
+    public void consumedStackCountPersistsBeforeRestart() throws Exception {
+        final Path root = tempDir.resolve("mintychochip");
+        ProvenanceWriter.install(root, message -> {});
+        final ItemStack stack = new ItemStack(Items.BREAD, 5);
+        final UUID id = ItemProvenance.birth(stack, ProvenanceSource.LOOT, HAND).orElseThrow();
+        stack.setCount(2);
+        ItemProvenance.noteConsumed(stack);
+        ProvenanceWriter.flushAndClose();
+        ProvenanceWriter.clearInstall();
+        ItemProvenance.clearAll();
+        ProvenanceWriter.install(root, message -> {});
+
+        assertEquals(2, ItemProvenance.live().get(id).orElseThrow().count());
+        ProvenanceWriter.clearInstall();
+    }
+
+    @Test
+    public void staleLowerSequenceLiveUpdateCannotReplaceNewerRevision() throws Exception {
+        final Path db = tempDir.resolve("mintychochip/provenance.db");
+        final UUID id = UUID.randomUUID();
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            repository.upsertLive(new LiveRecord(id, "minecraft:stone", "player:p:9", 9, 900L, false), 90L);
+            repository.upsertLive(new LiveRecord(id, "minecraft:stone", "player:p:1", 1, 100L, false), 10L);
+            final LiveRecord loaded = repository.loadAliveLive().getFirst();
+            assertEquals("player:p:9", loaded.locationDisplay());
+            assertEquals(9, loaded.count());
+        }
+    }
+
+    @Test
+    public void collisionSpillKeepsAuditPairedInOneFrame() throws Exception {
+        final Path root = tempDir.resolve("mintychochip");
+        final ItemStack original = new ItemStack(Items.DIAMOND, 1);
+        final UUID id = ItemProvenance.birth(original, ProvenanceSource.LOOT, HAND).orElseThrow();
+        ProvenanceWriter.installForTest(root, message -> {}, 1);
+        ProvenanceWriter.flushAndClose();
+
+        assertTrue(ItemProvenance.observe(original.copy(), StackLocation.playerSlot(PLAYER, 1)));
+        final ProvenanceSpillJournal journal = new ProvenanceSpillJournal(root.resolve("provenance-spill.log"));
+        final List<ProvenanceSpillJournal.SpillRecord> records = journal.readAll();
+        assertEquals(1, records.size());
+        final ProvenanceSpillJournal.SpillRecord.Collision spill =
+            assertInstanceOf(ProvenanceSpillJournal.SpillRecord.Collision.class, records.getFirst());
+        assertEquals(id, spill.record().id());
+        assertNotNull(spill.auditEventId());
+        assertNotNull(spill.auditEvent());
+
+        ProvenanceWriter.clearInstall();
+        ItemProvenance.clearAll();
+        ProvenanceWriter.install(root, message -> {});
+        ProvenanceWriter.flushAndClose();
+        ProvenanceWriter.clearInstall();
+        try (ProvenanceRepository repository = new ProvenanceRepository(root.resolve("provenance.db"))) {
+            assertEquals(1, repository.loadRecentCollisions(10).size());
+            assertEquals(1, repository.loadRecentAudit(10).stream()
+                .filter(event -> event.type() == ProvenanceEventType.COLLISION && event.id().equals(id))
+                .count());
+        }
+    }
+
+    @Test
+    public void collisionsReloadIntoDurableRecentSnapshotAfterRestart() throws Exception {
+        final Path root = tempDir.resolve("mintychochip");
+        ProvenanceWriter.install(root, message -> {
+        });
+        final ItemStack original = new ItemStack(Items.DIAMOND, 1);
+        final UUID id = ItemProvenance.birth(original, ProvenanceSource.LOOT, HAND).orElseThrow();
+        assertTrue(ItemProvenance.observe(original.copy(), StackLocation.playerSlot(PLAYER, 1)));
+        ProvenanceWriter.flushAndClose();
+        ProvenanceWriter.clearInstall();
+        ItemProvenance.clearAll();
+
+        ProvenanceWriter.install(root, message -> {
+        });
+        final List<CollisionRecord> collisions = ProvenanceWriter.recentCollisions(10).orElseThrow();
+        assertTrue(collisions.stream().anyMatch(record -> record.id().equals(id)));
+        assertTrue(ItemProvenance.observe(original.copy(), StackLocation.playerSlot(PLAYER, 1)));
+        ProvenanceWriter.flushAndClose();
+        ProvenanceWriter.clearInstall();
+        try (ProvenanceRepository repository = new ProvenanceRepository(root.resolve("provenance.db"))) {
+            assertEquals(
+                1,
+                repository.loadRecentAudit(100).stream()
+                    .filter(event -> event.type() == ProvenanceEventType.COLLISION && event.id().equals(id))
+                    .count()
+            );
+        }
+    }
+
+    @Test
+    public void collisionReplayDoesNotAddSecondAuditEvent() throws Exception {
+        final Path db = tempDir.resolve("mintychochip/provenance.db");
+        final UUID id = UUID.randomUUID();
+        final CollisionRecord collision = new CollisionRecord(
+            id,
+            ProvenanceCollisionKind.DUPLICATE_LOCATION,
+            HAND,
+            StackLocation.playerSlot(PLAYER, 1),
+            100L
+        );
+        final String key = id + "|DUPLICATE_LOCATION|" + HAND.display() + "|player:" + PLAYER + ":1";
+        final ProvenanceEvent event = new ProvenanceEvent(
+            100L,
+            ProvenanceEventType.COLLISION,
+            id,
+            "minecraft:diamond",
+            null,
+            null,
+            List.of(),
+            HAND.display(),
+            "DUPLICATE_LOCATION"
+        );
+        try (ProvenanceRepository repository = new ProvenanceRepository(db)) {
+            assertTrue(repository.insertCollision(collision, key));
+            repository.insertAudit(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)), event);
+            assertFalse(repository.insertCollision(collision, key));
+            repository.insertAudit(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)), event);
+            assertEquals(1, repository.loadRecentCollisions(10).size());
+            assertEquals(1, repository.loadRecentAudit(10).size());
+        }
+    }
 }
