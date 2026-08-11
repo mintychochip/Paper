@@ -46,7 +46,7 @@ public class ProvenancePersistenceTest {
 
     @Test
     public void restartKeepsAncestorHistory() {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack parent = new ItemStack(Items.IRON_ORE, 1);
         final UUID parentId = ItemProvenance.birth(parent, ProvenanceSource.BLOCK_DROP, HAND).orElseThrow();
@@ -62,7 +62,7 @@ public class ProvenancePersistenceTest {
         // Simulated restart: runtime state wiped, durable store stays.
         ItemProvenance.clearAll();
         ItemProvenance.lineage().clearCache();
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         ItemProvenance.rehydrate(persistedChild, HAND);
 
@@ -75,7 +75,7 @@ public class ProvenancePersistenceTest {
 
     @Test
     public void mergeSourceAndParentsPersistAndReload() throws Exception {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack target = new ItemStack(Items.COBBLESTONE, 40);
         final ItemStack source = new ItemStack(Items.COBBLESTONE, 24);
@@ -108,7 +108,7 @@ public class ProvenancePersistenceTest {
 
     @Test
     public void collisionIsPersistedAndReloadable() {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack original = new ItemStack(Items.DIAMOND, 4);
         ItemProvenance.birth(original, ProvenanceSource.LOOT, HAND).orElseThrow();
@@ -133,7 +133,7 @@ public class ProvenancePersistenceTest {
 
     @Test
     public void auditLinesAreWrittenAndValidJsonl() throws Exception {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack stack = new ItemStack(Items.COBBLESTONE, 1);
         ItemProvenance.birth(stack, ProvenanceSource.BLOCK_DROP, HAND);
@@ -211,7 +211,7 @@ public class ProvenancePersistenceTest {
     @Test
     public void criticalWritesNeverDropUnderQueuePressure() throws Exception {
         // Tiny capacity forces spill path for critical lineage writes.
-        ProvenanceWriter.installForTest(tempDir, message -> {
+        ProvenanceWriter.installForTest(tempDir.resolve("mintychochip"), message -> {
         }, 4);
         final int n = 200;
         for (int i = 0; i < n; i++) {
@@ -249,7 +249,7 @@ public class ProvenancePersistenceTest {
         assertTrue(Files.isRegularFile(replay), "simulated crash must leave unacked .replay");
         assertTrue(Files.notExists(spill) || !Files.isRegularFile(spill));
 
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         ProvenanceWriter.flushAndClose();
         ProvenanceWriter.clearInstall();
@@ -266,7 +266,7 @@ public class ProvenancePersistenceTest {
 
     @Test
     public void auditIsInSqliteAfterFlush() throws Exception {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack stack = new ItemStack(Items.COBBLESTONE, 1);
         final UUID id = ItemProvenance.birth(stack, ProvenanceSource.BLOCK_DROP, HAND).orElseThrow();
@@ -284,14 +284,14 @@ public class ProvenancePersistenceTest {
 
     @Test
     public void durableLiveSeedsCensusAndDetectsSecondLocation() {
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
         final ItemStack original = new ItemStack(Items.DIAMOND, 1);
         final UUID id = ItemProvenance.birth(original, ProvenanceSource.LOOT, HAND).orElseThrow();
         ProvenanceWriter.flushAndClose();
         ItemProvenance.clearAll();
         ProvenanceWriter.clearInstall();
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
 
         assertTrue(ItemProvenance.live().contains(id), "live must be seeded from DB");
@@ -327,7 +327,7 @@ public class ProvenancePersistenceTest {
 
         // Wipe runtime census, then install: must sync-replay spill then seed.
         ItemProvenance.clearAll();
-        ProvenanceWriter.install(tempDir, message -> {
+        ProvenanceWriter.install(tempDir.resolve("mintychochip"), message -> {
         });
 
         final LiveEntry seeded = ItemProvenance.live().get(id).orElseThrow(
