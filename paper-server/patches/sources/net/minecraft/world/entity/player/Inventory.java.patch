@@ -150,7 +150,7 @@
          ItemStack tmp = this.items.get(this.selected);
          this.items.set(this.selected, this.items.get(slot));
          this.items.set(slot, tmp);
-@@ -203,6 +_,21 @@
+@@ -203,6 +_,25 @@
      private int addResource(final int slot, final ItemStack itemStack) {
          int count = itemStack.getCount();
          ItemStack itemStackInSlot = this.getItem(slot);
@@ -160,6 +160,10 @@
 +            dev.mintychochip.provenance.StackLocation.labeled("player-inv-incoming");
 +        final dev.mintychochip.provenance.StackLocation targetLocation =
 +            dev.mintychochip.provenance.StackLocation.playerSlot(this.player.getUUID(), slot);
++        if (mergingIntoExisting) {
++            dev.mintychochip.provenance.ItemProvenance.ensure(itemStackInSlot, targetLocation);
++            dev.mintychochip.provenance.ItemProvenance.ensure(itemStack, sourceLocation);
++        }
 +        final dev.mintychochip.provenance.MergeTransition provenanceMerge = mergingIntoExisting
 +            ? dev.mintychochip.provenance.MergeTransition.capture(
 +                itemStackInSlot,

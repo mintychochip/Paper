@@ -1,6 +1,6 @@
 --- a/net/minecraft/world/inventory/Slot.java
 +++ b/net/minecraft/world/inventory/Slot.java
-@@ -142,9 +_,31 @@
+@@ -142,9 +_,33 @@
              if (slotStack.isEmpty()) {
                  this.setByPlayer(inputStack.split(transferableItemCount));
              } else if (ItemStack.isSameItemSameComponents(slotStack, inputStack)) {
@@ -9,6 +9,8 @@
 +                    dev.mintychochip.provenance.StackLocation.labeled("cursor");
 +                final dev.mintychochip.provenance.StackLocation targetLocation =
 +                    dev.mintychochip.provenance.StackLocation.labeled("menu-slot:" + this.index);
++                dev.mintychochip.provenance.ItemProvenance.ensure(slotStack, targetLocation);
++                dev.mintychochip.provenance.ItemProvenance.ensure(inputStack, sourceLocation);
 +                final dev.mintychochip.provenance.MergeTransition provenanceMerge =
 +                    dev.mintychochip.provenance.MergeTransition.capture(
 +                        slotStack,

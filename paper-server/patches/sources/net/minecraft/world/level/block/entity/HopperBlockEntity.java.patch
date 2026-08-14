@@ -203,7 +203,7 @@
          } else {
              entity.setItem(result);
          }
-@@ -317,15 +_,51 @@
+@@ -317,15 +_,53 @@
              boolean success = false;
              boolean wasEmpty = container.isEmpty();
              if (current.isEmpty()) {
@@ -234,6 +234,8 @@
 +                    dev.mintychochip.provenance.StackLocation.unknown();
 +                final dev.mintychochip.provenance.StackLocation targetLocation =
 +                    dev.mintychochip.provenance.ProvenanceLocations.forContainer(container, slot);
++                dev.mintychochip.provenance.ItemProvenance.ensure(current, targetLocation);
++                dev.mintychochip.provenance.ItemProvenance.ensure(itemStack, sourceLocation);
 +                final dev.mintychochip.provenance.MergeTransition provenanceMerge =
 +                    dev.mintychochip.provenance.MergeTransition.capture(
 +                        current,

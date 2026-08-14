@@ -403,6 +403,24 @@ public class ItemProvenanceTest {
     }
 
     @Test
+    public void mergeTransitionAcceptsActualMovedCountWhenCapacityExceedsSource() {
+        final ItemStack target = new ItemStack(Items.COBBLESTONE, 32);
+        final ItemStack source = new ItemStack(Items.COBBLESTONE, 8);
+        ItemProvenance.birth(target, ProvenanceSource.BLOCK_DROP, CHEST).orElseThrow();
+        ItemProvenance.birth(source, ProvenanceSource.BLOCK_DROP, HAND).orElseThrow();
+        final MergeTransition transition = MergeTransition.capture(target, source, CHEST, HAND).orElseThrow();
+
+        final int moved = Math.min(target.getMaxStackSize() - target.getCount(), source.getCount());
+        target.grow(moved);
+        source.shrink(moved);
+
+        assertTrue(ItemProvenance.applyMerge(transition, target, source));
+        assertEquals(40, target.getCount());
+        assertTrue(source.isEmpty());
+        assertEquals(ProvenanceSource.MERGE, StackStamp.read(target).orElseThrow().source());
+    }
+
+    @Test
     public void mergeTransitionRejectsMismatchedCounts() {
         final ItemStack target = new ItemStack(Items.COBBLESTONE, 50);
         final ItemStack source = new ItemStack(Items.COBBLESTONE, 30);

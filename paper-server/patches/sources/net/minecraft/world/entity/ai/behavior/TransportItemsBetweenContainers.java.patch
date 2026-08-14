@@ -50,7 +50,7 @@
                  container.setItem(slot, itemStack);
                  return ItemStack.EMPTY;
              }
-@@ -566,9 +_,31 @@
+@@ -566,9 +_,33 @@
              if (ItemStack.isSameItemSameComponents(containerItemStack, itemStack) && containerItemStack.getCount() < containerItemStack.getMaxStackSize()) {
                  int countThatCanBeAdded = containerItemStack.getMaxStackSize() - containerItemStack.getCount();
                  int countToAdd = Math.min(countThatCanBeAdded, itemStack.getCount());
@@ -59,6 +59,8 @@
 +                    dev.mintychochip.provenance.StackLocation.labeled("golem_hand");
 +                final dev.mintychochip.provenance.StackLocation targetLocation =
 +                    dev.mintychochip.provenance.StackLocation.labeled("container:" + body.getUUID() + ":deposit:" + slot);
++                dev.mintychochip.provenance.ItemProvenance.ensure(containerItemStack, targetLocation);
++                dev.mintychochip.provenance.ItemProvenance.ensure(itemStack, sourceLocation);
 +                final dev.mintychochip.provenance.MergeTransition provenanceMerge =
 +                    dev.mintychochip.provenance.MergeTransition.capture(
 +                        containerItemStack,
@@ -68,7 +70,8 @@
 +                    ).orElse(null);
 +                // mintychochip end - item provenance
                  containerItemStack.setCount(containerItemStack.getCount() + countToAdd);
-                 itemStack.setCount(itemStack.getCount() - countThatCanBeAdded);
+-                itemStack.setCount(itemStack.getCount() - countThatCanBeAdded);
++                itemStack.setCount(itemStack.getCount() - countToAdd);
                  container.setItem(slot, containerItemStack);
 +                // mintychochip start - item provenance
 +                if (provenanceMerge != null) {

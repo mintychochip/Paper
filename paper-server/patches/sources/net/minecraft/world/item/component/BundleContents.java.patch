@@ -54,7 +54,7 @@
          public int tryInsert(final ItemStack itemsToAdd) {
              if (!BundleContents.canItemBeInBundle(itemsToAdd)) {
                  return 0;
-@@ -195,16 +_,42 @@
+@@ -195,16 +_,44 @@
              if (amountToAdd == 0) {
                  return 0;
              }
@@ -73,6 +73,8 @@
 +                    dev.mintychochip.provenance.StackLocation.labeled("bundle");
 +                final dev.mintychochip.provenance.StackLocation targetLocation =
 +                    dev.mintychochip.provenance.StackLocation.labeled("bundle");
++                dev.mintychochip.provenance.ItemProvenance.ensure(removedStack, targetLocation);
++                dev.mintychochip.provenance.ItemProvenance.ensure(itemsToAdd, sourceLocation);
 +                final dev.mintychochip.provenance.MergeTransition provenanceMerge =
 +                    dev.mintychochip.provenance.MergeTransition.capture(
 +                        removedStack,

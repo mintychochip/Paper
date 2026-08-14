@@ -101,7 +101,7 @@
      }
  
      private void tryToMerge(final ItemEntity other) {
-@@ -258,11 +_,38 @@
+@@ -258,11 +_,40 @@
      }
  
      private static void merge(final ItemEntity toItem, final ItemStack toStack, final ItemEntity fromItem, final ItemStack fromStack) {
@@ -115,6 +115,8 @@
 +            dev.mintychochip.provenance.StackLocation.itemEntity(fromItem.getUUID());
 +        final dev.mintychochip.provenance.StackLocation targetLocation =
 +            dev.mintychochip.provenance.StackLocation.itemEntity(toItem.getUUID());
++        dev.mintychochip.provenance.ItemProvenance.ensure(toStack, targetLocation);
++        dev.mintychochip.provenance.ItemProvenance.ensure(fromStack, sourceLocation);
 +        final dev.mintychochip.provenance.MergeTransition provenanceMerge =
 +            dev.mintychochip.provenance.MergeTransition.capture(
 +                toStack,

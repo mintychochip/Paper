@@ -52,14 +52,17 @@ public class CraftingMenuProvenanceTest {
     }
 
     @Test
-    public void unstampedInventoryMergeKeepsVanillaCountsWithoutThrowing() {
+    public void unstampedInventoryMergeMintsLegacyLineageWithoutThrowing() {
         this.inventory.setItem(0, new ItemStack(Items.COBBLESTONE, 32));
         final ItemStack incoming = new ItemStack(Items.COBBLESTONE, 16);
 
         assertTrue(this.inventory.add(incoming));
 
-        assertEquals(48, this.inventory.getItem(0).getCount());
+        final ItemStack merged = this.inventory.getItem(0);
+        assertEquals(48, merged.getCount());
         assertTrue(incoming.isEmpty());
+        assertEquals(ProvenanceSource.MERGE, StackStamp.read(merged).orElseThrow().source());
+        assertEquals(2, StackStamp.read(merged).orElseThrow().parents().size());
     }
 
     @Test

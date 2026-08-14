@@ -214,7 +214,7 @@
                      } else {
                          player.drop(this.getCarried().split(1), true);
                      }
-@@ -460,7 +_,32 @@
+@@ -460,7 +_,34 @@
                          } else if (ItemStack.isSameItemSameComponents(clicked, carried)) {
                              Optional<ItemStack> newCarried = slot.tryRemove(clicked.getCount(), carried.getMaxStackSize() - carried.getCount(), player);
                              newCarried.ifPresent(itemsTaken -> {
@@ -226,6 +226,8 @@
 +                                    dev.mintychochip.provenance.StackLocation.labeled("menu-slot:" + slot.index);
 +                                final dev.mintychochip.provenance.StackLocation targetLocation =
 +                                    dev.mintychochip.provenance.StackLocation.playerSlot(player.getUUID(), -1);
++                                dev.mintychochip.provenance.ItemProvenance.ensure(carried, targetLocation);
++                                dev.mintychochip.provenance.ItemProvenance.ensure(itemsTaken, sourceLocation);
 +                                final dev.mintychochip.provenance.MergeTransition provenanceMerge =
 +                                    dev.mintychochip.provenance.MergeTransition.capture(
 +                                        carried,
@@ -312,7 +314,7 @@
          boolean anythingChanged = false;
          int destSlot = startSlot;
          if (backwards) {
-@@ -646,18 +_,73 @@
+@@ -646,18 +_,81 @@
              while (!itemStack.isEmpty() && (backwards ? destSlot >= startSlot : destSlot < endSlot)) {
                  Slot slot = this.slots.get(destSlot);
                  ItemStack target = slot.getItem();
@@ -330,6 +332,10 @@
 +                            dev.mintychochip.provenance.StackLocation.labeled("quick-move-src");
 +                        final dev.mintychochip.provenance.StackLocation targetLocation =
 +                            dev.mintychochip.provenance.StackLocation.labeled("menu-slot:" + slot.index);
++                        if (!isCheck) {
++                            dev.mintychochip.provenance.ItemProvenance.ensure(target, targetLocation);
++                            dev.mintychochip.provenance.ItemProvenance.ensure(itemStack, sourceLocation);
++                        }
 +                        final dev.mintychochip.provenance.MergeTransition provenanceMerge = isCheck
 +                            ? null
 +                            : dev.mintychochip.provenance.MergeTransition.capture(
@@ -360,6 +366,10 @@
 +                            dev.mintychochip.provenance.StackLocation.labeled("quick-move-src");
 +                        final dev.mintychochip.provenance.StackLocation targetLocation =
 +                            dev.mintychochip.provenance.StackLocation.labeled("menu-slot:" + slot.index);
++                        if (!isCheck) {
++                            dev.mintychochip.provenance.ItemProvenance.ensure(target, targetLocation);
++                            dev.mintychochip.provenance.ItemProvenance.ensure(itemStack, sourceLocation);
++                        }
 +                        final dev.mintychochip.provenance.MergeTransition provenanceMerge = isCheck
 +                            ? null
 +                            : dev.mintychochip.provenance.MergeTransition.capture(
