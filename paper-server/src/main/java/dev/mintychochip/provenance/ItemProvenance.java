@@ -649,6 +649,32 @@ public final class ItemProvenance {
     }
 
     /**
+     * Apply a captured merge only when the actual post-operation stacks conserve
+     * the moved quantity and retain their captured identities.
+     *
+     * @return true when the transition was applied, including duplicate-merge detection
+     */
+    public static boolean applyMerge(
+        final @NotNull MergeTransition transition,
+        final @NotNull ItemStack targetAfter,
+        final @NotNull ItemStack sourceAfter
+    ) {
+        if (!enabled || !transition.matches(targetAfter, sourceAfter)) {
+            return false;
+        }
+        afterContainerMerge(
+            targetAfter,
+            sourceAfter,
+            Optional.of(transition.targetId()),
+            Optional.of(transition.sourceId()),
+            transition.amountMoved(targetAfter, sourceAfter),
+            transition.sourceLocation(),
+            transition.targetLocation()
+        );
+        return true;
+    }
+
+    /**
      * Record a container merge as a new stack identity.
      *
      * <p>Call after {@code sourceRemaining} has been shrunk and

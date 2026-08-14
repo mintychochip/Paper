@@ -389,6 +389,47 @@ public class ItemProvenanceTest {
     }
 
     @Test
+    public void mergeTransitionRejectsMismatchedCounts() {
+        final ItemStack target = new ItemStack(Items.COBBLESTONE, 50);
+        final ItemStack source = new ItemStack(Items.COBBLESTONE, 30);
+        final UUID targetId = ItemProvenance.birth(target, ProvenanceSource.BLOCK_DROP, CHEST).orElseThrow();
+        final UUID sourceId = ItemProvenance.birth(source, ProvenanceSource.BLOCK_DROP, HAND).orElseThrow();
+        final MergeTransition transition = MergeTransition.capture(target, source, CHEST, HAND).orElseThrow();
+
+        target.grow(5);
+        source.shrink(4);
+
+        assertFalse(transition.matches(target, source));
+        assertFalse(ItemProvenance.applyMerge(transition, target, source));
+        assertEquals(targetId, StackStamp.readId(target).orElseThrow());
+        assertEquals(sourceId, StackStamp.readId(source).orElseThrow());
+        assertTrue(ItemProvenance.live().contains(targetId));
+        assertTrue(ItemProvenance.live().contains(sourceId));
+        assertTrue(ItemProvenance.audit().snapshot().stream().noneMatch(event -> event.type() == ProvenanceEventType.MERGE));
+    }
+
+    @Test
+    public void mergeTransitionDerivesMovedAmountFromPostState() {
+        final ItemStack target = new ItemStack(Items.COBBLESTONE, 50);
+        final ItemStack source = new ItemStack(Items.COBBLESTONE, 30);
+        final UUID targetId = ItemProvenance.birth(target, ProvenanceSource.BLOCK_DROP, CHEST).orElseThrow();
+        final UUID sourceId = ItemProvenance.birth(source, ProvenanceSource.BLOCK_DROP, HAND).orElseThrow();
+        final MergeTransition transition = MergeTransition.capture(target, source, CHEST, HAND).orElseThrow();
+
+        target.grow(14);
+        source.shrink(14);
+
+        assertTrue(transition.matches(target, source));
+        assertEquals(14, transition.amountMoved(target, source));
+        assertTrue(ItemProvenance.applyMerge(transition, target, source));
+        final StackProvenance merged = StackStamp.read(target).orElseThrow();
+        assertEquals(ProvenanceSource.MERGE, merged.source());
+        assertEquals(List.of(targetId, sourceId), merged.parents());
+        assertEquals(sourceId, StackStamp.readId(source).orElseThrow());
+        assertEquals(16, source.getCount());
+    }
+
+    @Test
     public void retiredMergeIdentitiesCannotBeRehydratedFromStaleCopies() {
         final ItemStack target = new ItemStack(Items.COBBLESTONE, 40);
         final ItemStack source = new ItemStack(Items.COBBLESTONE, 24);
