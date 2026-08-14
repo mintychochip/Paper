@@ -150,7 +150,7 @@
          ItemStack tmp = this.items.get(this.selected);
          this.items.set(this.selected, this.items.get(slot));
          this.items.set(slot, tmp);
-@@ -203,6 +_,19 @@
+@@ -203,6 +_,21 @@
      private int addResource(final int slot, final ItemStack itemStack) {
          int count = itemStack.getCount();
          ItemStack itemStackInSlot = this.getItem(slot);
@@ -160,17 +160,19 @@
 +            dev.mintychochip.provenance.StackLocation.labeled("player-inv-incoming");
 +        final dev.mintychochip.provenance.StackLocation targetLocation =
 +            dev.mintychochip.provenance.StackLocation.playerSlot(this.player.getUUID(), slot);
-+        final java.util.Optional<java.util.UUID> targetIdBefore = mergingIntoExisting
-+            ? dev.mintychochip.provenance.ItemProvenance.ensure(itemStackInSlot, targetLocation)
-+            : java.util.Optional.empty();
-+        final java.util.Optional<java.util.UUID> sourceIdBefore = mergingIntoExisting
-+            ? dev.mintychochip.provenance.ItemProvenance.ensure(itemStack, sourceLocation)
-+            : java.util.Optional.empty();
++        final dev.mintychochip.provenance.MergeTransition provenanceMerge = mergingIntoExisting
++            ? dev.mintychochip.provenance.MergeTransition.capture(
++                itemStackInSlot,
++                itemStack,
++                targetLocation,
++                sourceLocation
++            ).orElse(null)
++            : null;
 +        // mintychochip end - item provenance
          if (itemStackInSlot.isEmpty()) {
              itemStackInSlot = itemStack.copyWithCount(0);
              this.setItem(slot, itemStackInSlot);
-@@ -217,6 +_,27 @@
+@@ -217,6 +_,23 @@
          count -= toAdd;
          itemStackInSlot.grow(toAdd);
          itemStackInSlot.setPopTime(POP_TIME_DURATION);
@@ -178,14 +180,10 @@
 +        if (mergingIntoExisting && toAdd > 0) {
 +            final net.minecraft.world.item.ItemStack remainingView = itemStack.copy();
 +            remainingView.setCount(count);
-+            dev.mintychochip.provenance.ItemProvenance.afterContainerMerge(
++            dev.mintychochip.provenance.ItemProvenance.applyMerge(
++                provenanceMerge,
 +                itemStackInSlot,
-+                remainingView,
-+                targetIdBefore,
-+                sourceIdBefore,
-+                toAdd,
-+                sourceLocation,
-+                targetLocation
++                remainingView
 +            );
 +        } else if (toAdd > 0) {
 +            // Identity moved into a previously empty slot.

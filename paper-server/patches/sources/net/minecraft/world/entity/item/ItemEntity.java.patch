@@ -101,7 +101,7 @@
      }
  
      private void tryToMerge(final ItemEntity other) {
-@@ -258,11 +_,41 @@
+@@ -258,11 +_,38 @@
      }
  
      private static void merge(final ItemEntity toItem, final ItemStack toStack, final ItemEntity fromItem, final ItemStack fromStack) {
@@ -115,26 +115,23 @@
 +            dev.mintychochip.provenance.StackLocation.itemEntity(fromItem.getUUID());
 +        final dev.mintychochip.provenance.StackLocation targetLocation =
 +            dev.mintychochip.provenance.StackLocation.itemEntity(toItem.getUUID());
-+        final java.util.Optional<java.util.UUID> targetIdBefore =
-+            dev.mintychochip.provenance.ItemProvenance.ensure(toStack, targetLocation);
-+        final java.util.Optional<java.util.UUID> sourceIdBefore =
-+            dev.mintychochip.provenance.ItemProvenance.ensure(fromStack, sourceLocation);
-+        final int sourceCountBefore = fromStack.getCount();
++        final dev.mintychochip.provenance.MergeTransition provenanceMerge =
++            dev.mintychochip.provenance.MergeTransition.capture(
++                toStack,
++                fromStack,
++                targetLocation,
++                sourceLocation
++            ).orElse(null);
 +        // mintychochip end - item provenance
          merge(toItem, toStack, fromStack);
          toItem.pickupDelay = Math.max(toItem.pickupDelay, fromItem.pickupDelay);
          toItem.age = Math.min(toItem.age, fromItem.age);
 +        // mintychochip start - item provenance
-+        final int moved = sourceCountBefore - fromStack.getCount();
-+        if (moved > 0) {
-+            dev.mintychochip.provenance.ItemProvenance.afterContainerMerge(
++        if (provenanceMerge != null) {
++            dev.mintychochip.provenance.ItemProvenance.applyMerge(
++                provenanceMerge,
 +                toItem.getItem(),
-+                fromStack,
-+                targetIdBefore,
-+                sourceIdBefore,
-+                moved,
-+                sourceLocation,
-+                targetLocation
++                fromStack
 +            );
 +        }
 +        // mintychochip end - item provenance
