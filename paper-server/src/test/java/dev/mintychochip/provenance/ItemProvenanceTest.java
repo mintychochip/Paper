@@ -389,6 +389,20 @@ public class ItemProvenanceTest {
     }
 
     @Test
+    public void mergeCaptureDoesNotStampFailedUntrackedInputs() {
+        final ItemStack target = new ItemStack(Items.COBBLESTONE, 50);
+        final ItemStack source = new ItemStack(Items.COBBLESTONE, 30);
+
+        final Optional<MergeTransition> transition = MergeTransition.capture(target, source, CHEST, HAND);
+
+        assertTrue(transition.isEmpty());
+        assertTrue(StackStamp.read(target).isEmpty());
+        assertTrue(StackStamp.read(source).isEmpty());
+        assertEquals(0, ItemProvenance.live().size());
+        assertTrue(ItemProvenance.audit().snapshot().isEmpty());
+    }
+
+    @Test
     public void mergeTransitionRejectsMismatchedCounts() {
         final ItemStack target = new ItemStack(Items.COBBLESTONE, 50);
         final ItemStack source = new ItemStack(Items.COBBLESTONE, 30);

@@ -41,8 +41,8 @@ public record MergeTransition(
         if (!targetItemId.equals(ItemProvenance.itemId(source))) {
             return Optional.empty();
         }
-        final Optional<UUID> targetId = ItemProvenance.ensure(target, targetLocation);
-        final Optional<UUID> sourceId = ItemProvenance.ensure(source, sourceLocation);
+        final Optional<UUID> targetId = StackStamp.readId(target);
+        final Optional<UUID> sourceId = StackStamp.readId(source);
         if (targetId.isEmpty() || sourceId.isEmpty()) {
             return Optional.empty();
         }
