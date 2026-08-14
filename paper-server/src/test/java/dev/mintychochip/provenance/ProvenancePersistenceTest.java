@@ -213,6 +213,31 @@ public class ProvenancePersistenceTest {
     }
 
     @Test
+    public void liveCountTransitionPersists() throws Exception {
+        final Path root = this.tempDir.resolve("mintychochip");
+        ProvenanceWriter.install(root, message -> {
+        });
+        final ItemStack stack = new ItemStack(Items.DIAMOND, 4);
+        final UUID id = ItemProvenance.birth(stack, ProvenanceSource.LOOT, HAND).orElseThrow();
+
+        ItemProvenance.updateLiveCount(id, 2);
+        assertEquals(2, ItemProvenance.live().get(id).orElseThrow().count());
+        ProvenanceWriter.flushAndClose();
+        ProvenanceWriter.clearInstall();
+
+        try (ProvenanceRepository repository = new ProvenanceRepository(root.resolve("provenance.db"))) {
+            assertEquals(
+                2,
+                repository.loadAliveLive().stream()
+                    .filter(record -> record.id().equals(id))
+                    .findFirst()
+                    .orElseThrow()
+                    .count()
+            );
+        }
+    }
+
+    @Test
     public void liveUpsertAndLoadAliveSurvivesReopen() throws Exception {
         final Path db = tempDir.resolve("mintychochip/provenance.db");
         final UUID id = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");

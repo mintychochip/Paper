@@ -116,7 +116,7 @@
  
                      for (Slot slot : this.quickcraftSlots) {
                          ItemStack carriedItemStack = this.getCarried();
-@@ -386,12 +_,76 @@
+@@ -386,12 +_,78 @@
                              int maxSize = Math.min(source.getMaxStackSize(), slot.getMaxStackSize(source));
                              int newCount = Math.min(getQuickCraftPlaceCount(this.quickcraftSlots.size(), this.quickcraftType, source) + carry, maxSize);
                              remaining -= newCount - carry;
@@ -187,8 +187,10 @@
 +                                    null
 +                                );
 +                            } else {
-+                                dev.mintychochip.provenance.ItemProvenance.live().get(dragParent.get())
-+                                    .ifPresent(e -> e.setCount(remainingAfterDrag));
++                                dev.mintychochip.provenance.ItemProvenance.updateLiveCount(
++                                    dragParent.get(),
++                                    remainingAfterDrag
++                                );
 +                            }
 +                        }
 +                        // mintychochip end - item provenance

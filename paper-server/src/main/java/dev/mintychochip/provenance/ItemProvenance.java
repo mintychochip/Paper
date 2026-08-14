@@ -1006,6 +1006,13 @@ public final class ItemProvenance {
         return Optional.of(id);
     }
 
+    public static void updateLiveCount(final @NotNull UUID id, final int count) {
+        if (!enabled || count < 0) {
+            return;
+        }
+        LIVE.get(id).ifPresent(entry -> updateLiveCount(entry, count));
+    }
+
     static void updateLiveCount(final @NotNull LiveEntry entry, final int count) {
         synchronized (entry) {
             if (entry.count() == count) {
