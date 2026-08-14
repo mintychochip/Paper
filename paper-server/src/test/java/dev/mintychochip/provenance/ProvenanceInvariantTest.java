@@ -47,6 +47,23 @@ public class ProvenanceInvariantTest {
     }
 
     @Test
+    public void transientLocationsCannotCreateCollisionEvidence() {
+        final ItemStack stack = new ItemStack(Items.DIAMOND, 4);
+        ItemProvenance.birth(stack, ProvenanceSource.LOOT, StackLocation.labeled("incoming")).orElseThrow();
+
+        assertEquals(
+            StackLocation.unknown(),
+            ItemProvenance.live().get(StackStamp.readId(stack).orElseThrow()).orElseThrow().location()
+        );
+        assertFalse(ItemProvenance.observe(stack.copy(), StackLocation.labeled("menu-slot:0")));
+        assertTrue(ItemProvenance.collisions().isEmpty());
+        assertFalse(StackLocation.labeled("cursor").isConcrete());
+        assertFalse(StackLocation.unknown().isConcrete());
+        assertTrue(StackLocation.playerSlot(PLAYER, 0).isConcrete());
+        assertTrue(StackLocation.itemEntity(UUID.randomUUID()).isConcrete());
+    }
+
+    @Test
     public void sameUuidObservedInTwoSlotsCreatesOneCollision() {
         final ItemStack original = new ItemStack(Items.DIAMOND, 4);
         final StackLocation first = StackLocation.playerSlot(PLAYER, 0);

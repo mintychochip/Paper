@@ -83,9 +83,9 @@ public final class StackLocation {
         return this.label;
     }
 
-    /** Whether this location is concrete enough to collide with a different one. */
+    /** Whether this restart-stable location is authoritative enough for collision evidence. */
     public boolean isConcrete() {
-        return this.kind != LocationKind.UNKNOWN;
+        return this.kind == LocationKind.PLAYER_SLOT || this.kind == LocationKind.ITEM_ENTITY;
     }
 
     @Override
