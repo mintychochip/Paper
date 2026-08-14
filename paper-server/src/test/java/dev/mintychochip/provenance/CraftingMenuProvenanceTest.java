@@ -52,6 +52,17 @@ public class CraftingMenuProvenanceTest {
     }
 
     @Test
+    public void unstampedInventoryMergeKeepsVanillaCountsWithoutThrowing() {
+        this.inventory.setItem(0, new ItemStack(Items.COBBLESTONE, 32));
+        final ItemStack incoming = new ItemStack(Items.COBBLESTONE, 16);
+
+        assertTrue(this.inventory.add(incoming));
+
+        assertEquals(48, this.inventory.getItem(0).getCount());
+        assertTrue(incoming.isEmpty());
+    }
+
+    @Test
     public void shiftClickCraftRetainsCraftIdentityInInventory() {
         final CraftingMenu menu = this.craftingMenuWithLogToPlanks();
         final UUID ingredientId = StackStamp.readId(menu.craftSlots.getItem(0)).orElseThrow();

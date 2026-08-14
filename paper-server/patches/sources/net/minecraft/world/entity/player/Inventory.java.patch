@@ -172,7 +172,7 @@
          if (itemStackInSlot.isEmpty()) {
              itemStackInSlot = itemStack.copyWithCount(0);
              this.setItem(slot, itemStackInSlot);
-@@ -217,6 +_,23 @@
+@@ -217,6 +_,25 @@
          count -= toAdd;
          itemStackInSlot.grow(toAdd);
          itemStackInSlot.setPopTime(POP_TIME_DURATION);
@@ -180,11 +180,13 @@
 +        if (mergingIntoExisting && toAdd > 0) {
 +            final net.minecraft.world.item.ItemStack remainingView = itemStack.copy();
 +            remainingView.setCount(count);
-+            dev.mintychochip.provenance.ItemProvenance.applyMerge(
-+                provenanceMerge,
-+                itemStackInSlot,
-+                remainingView
-+            );
++            if (provenanceMerge != null) {
++                dev.mintychochip.provenance.ItemProvenance.applyMerge(
++                    provenanceMerge,
++                    itemStackInSlot,
++                    remainingView
++                );
++            }
 +        } else if (toAdd > 0) {
 +            // Identity moved into a previously empty slot.
 +            dev.mintychochip.provenance.ItemProvenance.transfer(
