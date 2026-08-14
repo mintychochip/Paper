@@ -203,7 +203,7 @@
          } else {
              entity.setItem(result);
          }
-@@ -317,15 +_,52 @@
+@@ -317,15 +_,51 @@
              boolean success = false;
              boolean wasEmpty = container.isEmpty();
              if (current.isEmpty()) {
@@ -234,24 +234,23 @@
 +                    dev.mintychochip.provenance.StackLocation.unknown();
 +                final dev.mintychochip.provenance.StackLocation targetLocation =
 +                    dev.mintychochip.provenance.ProvenanceLocations.forContainer(container, slot);
-+                final java.util.Optional<java.util.UUID> targetIdBefore =
-+                    dev.mintychochip.provenance.ItemProvenance.ensure(current, targetLocation);
-+                final java.util.Optional<java.util.UUID> sourceIdBefore =
-+                    dev.mintychochip.provenance.ItemProvenance.ensure(itemStack, sourceLocation);
++                final dev.mintychochip.provenance.MergeTransition provenanceMerge =
++                    dev.mintychochip.provenance.MergeTransition.capture(
++                        current,
++                        itemStack,
++                        targetLocation,
++                        sourceLocation
++                    ).orElse(null);
 +                // mintychochip end - item provenance
                  itemStack.shrink(count);
                  current.grow(count);
                  success = count > 0;
 +                // mintychochip start - item provenance
-+                if (count > 0) {
-+                    dev.mintychochip.provenance.ItemProvenance.afterContainerMerge(
++                if (provenanceMerge != null) {
++                    dev.mintychochip.provenance.ItemProvenance.applyMerge(
++                        provenanceMerge,
 +                        current,
-+                        itemStack,
-+                        targetIdBefore,
-+                        sourceIdBefore,
-+                        count,
-+                        sourceLocation,
-+                        targetLocation
++                        itemStack
 +                    );
 +                }
 +                // mintychochip end - item provenance

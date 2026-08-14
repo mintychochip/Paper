@@ -50,7 +50,7 @@
                  container.setItem(slot, itemStack);
                  return ItemStack.EMPTY;
              }
-@@ -566,9 +_,36 @@
+@@ -566,9 +_,31 @@
              if (ItemStack.isSameItemSameComponents(containerItemStack, itemStack) && containerItemStack.getCount() < containerItemStack.getMaxStackSize()) {
                  int countThatCanBeAdded = containerItemStack.getMaxStackSize() - containerItemStack.getCount();
                  int countToAdd = Math.min(countThatCanBeAdded, itemStack.getCount());
@@ -59,28 +59,23 @@
 +                    dev.mintychochip.provenance.StackLocation.labeled("golem_hand");
 +                final dev.mintychochip.provenance.StackLocation targetLocation =
 +                    dev.mintychochip.provenance.StackLocation.labeled("container:" + body.getUUID() + ":deposit:" + slot);
-+                final java.util.Optional<java.util.UUID> targetIdBefore =
-+                    dev.mintychochip.provenance.ItemProvenance.ensure(containerItemStack, targetLocation);
-+                final java.util.Optional<java.util.UUID> sourceIdBefore =
-+                    dev.mintychochip.provenance.ItemProvenance.ensure(itemStack, sourceLocation);
++                final dev.mintychochip.provenance.MergeTransition provenanceMerge =
++                    dev.mintychochip.provenance.MergeTransition.capture(
++                        containerItemStack,
++                        itemStack,
++                        targetLocation,
++                        sourceLocation
++                    ).orElse(null);
 +                // mintychochip end - item provenance
                  containerItemStack.setCount(containerItemStack.getCount() + countToAdd);
                  itemStack.setCount(itemStack.getCount() - countThatCanBeAdded);
                  container.setItem(slot, containerItemStack);
 +                // mintychochip start - item provenance
-+                if (countToAdd > 0) {
-+                    // Use actual remaining count (vanilla may overshoot with countThatCanBeAdded)
-+                    final ItemStack remaining = itemStack.isEmpty()
-+                        ? ItemStack.EMPTY
-+                        : itemStack;
-+                    dev.mintychochip.provenance.ItemProvenance.afterContainerMerge(
++                if (provenanceMerge != null) {
++                    dev.mintychochip.provenance.ItemProvenance.applyMerge(
++                        provenanceMerge,
 +                        containerItemStack,
-+                        remaining,
-+                        targetIdBefore,
-+                        sourceIdBefore,
-+                        countToAdd,
-+                        sourceLocation,
-+                        targetLocation
++                        itemStack
 +                    );
 +                }
 +                // mintychochip end - item provenance
